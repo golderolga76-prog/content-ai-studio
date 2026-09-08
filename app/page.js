@@ -206,6 +206,48 @@ export default function Home() {
     setEditProcessing(false);
   }
 }
+  async function segmentObject() {
+  if (!files.length) {
+    setSegmentError("Сначала выберите изображение.");
+    return;
+  }
+
+  if (!segmentPrompt.trim()) {
+    setSegmentError("Укажите объект, например: jar или box.");
+    return;
+  }
+
+  setSegmentProcessing(true);
+  setSegmentError("");
+  setSegmentResults([]);
+
+  try {
+    const formData = new FormData();
+    formData.append("file", files[0]);
+    formData.append("objectPrompt", segmentPrompt.trim());
+
+    const response = await fetch("/api/segment-object", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Ошибка выделения объекта.");
+    }
+
+    if (!data.urls || !data.urls.length) {
+      throw new Error("Модель не вернула результат.");
+    }
+
+    setSegmentResults(data.urls);
+  } catch (err) {
+    setSegmentError(err.message);
+  } finally {
+    setSegmentProcessing(false);
+  }
+}
 
   return (
     <main
