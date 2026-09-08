@@ -547,6 +547,9 @@ AI/API операции:
 Отвечай на русском языке.
 `;
 
+const nullableString = () => ({ anyOf: [{ type: "string" }, { type: "null" }] });
+const nullableNumber = () => ({ anyOf: [{ type: "number" }, { type: "null" }] });
+
 const responseSchema = {
   type: "object",
   properties: {
@@ -564,25 +567,25 @@ const responseSchema = {
         },
         taskType: { type: "string" },
         purpose: { type: "string" },
-        style: { type: ["string", "null"] },
+        style: nullableString(),
         parameters: {
           type: "object",
           properties: {
-            fileCount: { type: ["number", "null"] },
-            width: { type: ["number", "null"] },
-            height: { type: ["number", "null"] },
-            aspectRatio: { type: ["string", "null"] },
-            format: { type: ["string", "null"] },
-            background: { type: ["string", "null"] },
-            backgroundColor: { type: ["string", "null"] },
-            quality: { type: ["string", "null"] },
-            shadow: { type: ["string", "null"] },
-            lighting: { type: ["string", "null"] },
-            platform: { type: ["string", "null"] },
-            rotation: { type: ["string", "null"] },
-            scale: { type: ["string", "null"] },
-            position: { type: ["string", "null"] },
-            additionalRequirements: { type: ["string", "null"] },
+            fileCount: nullableNumber(),
+            width: nullableNumber(),
+            height: nullableNumber(),
+            aspectRatio: nullableString(),
+            format: nullableString(),
+            background: nullableString(),
+            backgroundColor: nullableString(),
+            quality: nullableString(),
+            shadow: nullableString(),
+            lighting: nullableString(),
+            platform: nullableString(),
+            rotation: nullableString(),
+            scale: nullableString(),
+            position: nullableString(),
+            additionalRequirements: nullableString(),
           },
           required: [
             "fileCount",
@@ -631,25 +634,25 @@ const responseSchema = {
                 type: "string",
                 enum: ["free", "paid", "unknown"],
               },
-              costDetail: { type: ["string", "null"] },
+              costDetail: nullableString(),
               requiresConfirmation: { type: "boolean" },
               params: {
                 type: "object",
                 properties: {
-                  width: { type: ["number", "null"] },
-                  height: { type: ["number", "null"] },
-                  format: { type: ["string", "null"] },
-                  background: { type: ["string", "null"] },
-                  backgroundColor: { type: ["string", "null"] },
-                  fit: { type: ["string", "null"] },
-                  objectPrompt: { type: ["string", "null"] },
-                  prompt: { type: ["string", "null"] },
-                  aspectRatio: { type: ["string", "null"] },
-                  rotation: { type: ["string", "null"] },
-                  scale: { type: ["string", "null"] },
-                  position: { type: ["string", "null"] },
-                  shadow: { type: ["string", "null"] },
-                  quality: { type: ["string", "null"] },
+                  width: nullableNumber(),
+                  height: nullableNumber(),
+                  format: nullableString(),
+                  background: nullableString(),
+                  backgroundColor: nullableString(),
+                  fit: nullableString(),
+                  objectPrompt: nullableString(),
+                  prompt: nullableString(),
+                  aspectRatio: nullableString(),
+                  rotation: nullableString(),
+                  scale: nullableString(),
+                  position: nullableString(),
+                  shadow: nullableString(),
+                  quality: nullableString(),
                 },
                 required: [
                   "width",
@@ -769,9 +772,9 @@ export async function POST(request) {
             ],
           },
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
+        text: {
+          format: {
+            type: "json_schema",
             name: "task_analysis",
             strict: true,
             schema: responseSchema,
