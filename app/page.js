@@ -453,6 +453,79 @@ export default function Home() {
                         </a>
                       </div>
                     )}
+                      <hr style={{ margin: "24px 0" }} />
+
+<h4>AI-редактирование изображения</h4>
+
+<p>
+  Введите инструкцию для FLUX Kontext Pro.
+  Пока тестируем только первое выбранное изображение.
+</p>
+
+<textarea
+  value={editPrompt}
+  onChange={(e) => setEditPrompt(e.target.value)}
+  placeholder="Например: слегка наклони баночку вправо, расположи рядом с коробкой, добавь мягкую естественную тень и студийное освещение"
+  style={{
+    width: "100%",
+    minHeight: "110px",
+    padding: "12px",
+    marginTop: "10px",
+    marginBottom: "12px",
+    border: "1px solid #ddd",
+    borderRadius: "10px",
+    resize: "vertical",
+  }}
+/>
+
+<button
+  onClick={editImage}
+  disabled={editProcessing}
+  style={{
+    padding: "12px 18px",
+    background: "#111",
+    color: "#fff",
+    border: "none",
+    borderRadius: "10px",
+  }}
+>
+  {editProcessing
+    ? "AI обрабатывает..."
+    : "AI-редактирование — тест 1 фото"}
+</button>
+
+{editError && (
+  <p style={{ marginTop: "14px" }}>{editError}</p>
+)}
+
+{editResult && (
+  <div style={{ marginTop: "18px" }}>
+    <p>
+      <strong>AI-редактирование готово:</strong>
+    </p>
+
+    <img
+      src={editResult}
+      alt="AI результат"
+      style={{
+        maxWidth: "340px",
+        width: "100%",
+        border: "1px solid #ddd",
+        borderRadius: "10px",
+      }}
+    />
+
+    <p style={{ marginTop: "10px" }}>
+      <a
+        href={editResult}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Открыть готовое изображение
+      </a>
+    </p>
+  </div>
+)}
                   </div>
                 )}
 
