@@ -12,6 +12,7 @@
   "react": "latest",
   "react-dom": "latest",
   "sharp": "latest",
-  "replicate": "latest"  
+  "replicate": "latest",
+  "@supabase/supabase-js": "latest"
 }
 }
