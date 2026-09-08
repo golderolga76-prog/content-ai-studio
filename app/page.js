@@ -1,4 +1,46 @@
+"use client";
+
+import { useState } from "react";
+
 export default function Home() {
+  const [task, setTask] = useState("");
+  const [result, setResult] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function analyzeTask() {
+    if (!task.trim()) {
+      setError("Введите ТЗ или описание задачи.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult("");
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ task }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка анализа.");
+      }
+
+      setResult(data.result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main
       style={{
@@ -53,6 +95,8 @@ export default function Home() {
             <h2>Рабочая область</h2>
 
             <textarea
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
               placeholder="Вставьте ТЗ клиента или опишите задачу..."
               style={{
                 width: "100%",
@@ -67,16 +111,19 @@ export default function Home() {
 
             <div style={{ marginTop: "16px" }}>
               <button
+                onClick={analyzeTask}
+                disabled={loading}
                 style={{
                   padding: "12px 18px",
                   borderRadius: "10px",
                   border: "none",
                   background: "#111",
                   color: "#fff",
-                  cursor: "pointer",
+                  cursor: loading ? "default" : "pointer",
+                  opacity: loading ? 0.6 : 1,
                 }}
               >
-                Анализировать
+                {loading ? "Анализирую..." : "Анализировать"}
               </button>
             </div>
 
@@ -86,10 +133,22 @@ export default function Home() {
                 padding: "18px",
                 background: "#f3f3f3",
                 borderRadius: "12px",
+                whiteSpace: "pre-wrap",
+                lineHeight: "1.5",
               }}
             >
-              <strong>Здесь будет результат:</strong>
-              <p>план работы, стоимость, этапы и подтверждение каждого шага.</p>
+              {error && <p style={{ margin: 0 }}>{error}</p>}
+
+              {!error && !result && (
+                <>
+                  <strong>Здесь будет результат:</strong>
+                  <p>
+                    план работы, стоимость, этапы и подтверждение каждого шага.
+                  </p>
+                </>
+              )}
+
+              {result && result}
             </div>
           </section>
         </div>
