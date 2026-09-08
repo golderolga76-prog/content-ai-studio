@@ -572,6 +572,64 @@ export default function Home() {
     </p>
   </div>
 )}
+  <hr style={{ margin: "24px 0" }} />
+
+<h4>Выделение объекта</h4>
+
+<p>
+  Введите объект, который нужно найти на первом изображении.
+</p>
+
+<input
+  value={segmentPrompt}
+  onChange={(e) => setSegmentPrompt(e.target.value)}
+  placeholder="Например: jar или box"
+  style={{
+    width: "100%",
+    padding: "12px",
+    marginBottom: "12px",
+    border: "1px solid #ddd",
+    borderRadius: "10px",
+  }}
+/>
+
+<button
+  onClick={segmentObject}
+  disabled={segmentProcessing}
+>
+  {segmentProcessing
+    ? "Ищу объект..."
+    : "Выделить объект — тест"}
+</button>
+
+{segmentError && (
+  <p style={{ marginTop: "14px" }}>
+    {segmentError}
+  </p>
+)}
+
+{segmentResults.length > 0 && (
+  <div style={{ marginTop: "18px" }}>
+    <p>
+      <strong>Результат выделения:</strong>
+    </p>
+
+    {segmentResults.map((url, index) => (
+      <div key={index} style={{ marginBottom: "16px" }}>
+        <img
+          src={url}
+          alt={`Результат ${index + 1}`}
+          style={{
+            maxWidth: "340px",
+            width: "100%",
+            border: "1px solid #ddd",
+            borderRadius: "10px",
+          }}
+        />
+      </div>
+    ))}
+  </div>
+)}
                   </div>
                 )}
 
