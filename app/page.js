@@ -60,6 +60,7 @@ const CONNECTED_HANDLERS = new Set([
   "sharp:resize",
   "replicate:remove-background",
   "replicate:segment",
+  "replicate:flux-edit",
 ]);
 
 function formatValue(value) {
@@ -248,6 +249,34 @@ export default function Home() {
 
       return { type: "urls", urls: data.urls };
     }
+    if (step.handler === "replicate:flux-edit") {
+  const prompt = p.prompt || step.description || step.operation || "";
+
+  if (!prompt.trim()) {
+    throw new Error("Не указана инструкция для AI-редактирования изображения.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", inputFiles[0]);
+  formData.append("prompt", prompt);
+
+  const response = await fetch("/api/edit-image", {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Ошибка AI-редактирования изображения.");
+  }
+
+  if (!data.imageUrl) {
+    throw new Error("Не получено готовое изображение.");
+  }
+
+  return { type: "url", url: data.imageUrl };
+}
 
     throw new Error(`Обработчик ${step.handler} не подключён.`);
   }
