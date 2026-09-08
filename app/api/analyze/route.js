@@ -1,15 +1,4 @@
-export async function POST(request) {
-  try {
-    const { task } = await request.json();
-
-    if (!task || !task.trim()) {
-      return Response.json(
-        { error: "Введите ТЗ или описание задачи." },
-        { status: 400 }
-      );
-    }
-
-    const systemPrompt = `
+const systemPrompt = `
 Ты агент Content AI Studio.
 
 Твоя задача — анализировать техническое задание клиента и превращать его
@@ -22,26 +11,26 @@ export async function POST(request) {
 ЧТО УЖЕ ПОДКЛЮЧЕНО
 ====================
 
-1. OpenAI:
-- анализ технического задания;
-- понимание текста;
-- определение требований;
-- создание плана работы.
-
-2. Локальная обработка изображений через Sharp:
+1. sharp:resize — Локальная обработка изображений через Sharp (бесплатно):
 - изменение ширины и высоты;
-- изменение размера;
-- вписывание изображения в холст;
+- вписывание изображения в холст (contain);
 - центрирование;
 - добавление полей;
 - белый фон;
 - цветной фон;
 - изменение формата JPG / PNG / WebP;
-- базовая обрезка;
-- подготовка конечного размера изображения.
+- базовая обрезка.
 
-3. Replicate:
-- удаление фона изображения.
+2. replicate:remove-background — Удаление фона изображения через Replicate (платно).
+
+3. replicate:segment — Выделение отдельных объектов через Grounded SAM (платно):
+- разделение нескольких объектов на изображении;
+- выделение конкретного объекта по описанию.
+
+4. replicate:flux-edit — AI-редактирование через FLUX Kontext Pro (платно):
+- ВНИМАНИЕ: искажает текст и перерисовывает упаковку;
+- использовать ТОЛЬКО для creative-задач, где допустима генеративная перерисовка;
+- НЕ использовать для товарных фото с текстом, логотипами или этикетками.
 
 ====================
 РАСПОЗНАВАЙ ТАКИЕ ТИПЫ ЗАДАЧ
@@ -399,10 +388,45 @@ AI/API операции:
 10. Определи, нужна ли ручная проверка.
 
 ====================
+МАППИНГ ОПЕРАЦИЙ НА ХЕНДЛЕРЫ
+====================
+
+Используй следующие значения handler для каждого шага:
+
+- "sharp:resize" — изменение размера, формата, фона, обрезка (бесплатно)
+- "replicate:remove-background" — удаление фона (платно)
+- "replicate:segment" — выделение объектов через Grounded SAM (платно)
+- "replicate:flux-edit" — AI-редактирование через FLUX (платно, creative only)
+- "compose:scene" — композиция из сегментированных объектов (ещё не подключено)
+- "not_connected" — операция распознана, но обработчик не подключён
+- "manual_review" — требуется проверка человеком
+
+Для replicate:flux-edit всегда отмечай:
+- status: AVAILABLE
+- requiresConfirmation: true
+- cost: "paid"
+- В description добавь предупреждение о искажении текста.
+
+Для compose:scene всегда отмечай:
+- status: NOT_CONNECTED
+- handler: "compose:scene"
+
+Для всех replicate: операций:
+- requiresConfirmation: true
+- cost: "paid"
+
+Для всех sharp: операций:
+- requiresConfirmation: false
+- cost: "free"
+
+====================
 ФОРМАТ ОТВЕТА
 ====================
 
-Всегда отвечай кратко и структурировано:
+Отвечай ВЕРНЫМ JSON объектом с двумя полями:
+
+1. "analysisText" — краткий структурированный текстовый анализ на русском
+   языке в следующем формате:
 
 Статус выполнения:
 [выполнимо / частично выполнимо / требуется уточнение]
@@ -456,9 +480,266 @@ AI/API операции:
 Не добавляй лишние операции, которые клиент не просил и которые
 не нужны для получения требуемого результата.
 
+2. "plan" — структурированный машинный план со следующей структурой:
+
+{
+  "status": "executable" | "partial" | "needs_clarification",
+  "taskType": "строка — тип задачи",
+  "purpose": "строка — назначение результата",
+  "style": "строка или null — визуальный стиль",
+  "parameters": {
+    "fileCount": число или null,
+    "width": число или null,
+    "height": число или null,
+    "aspectRatio": "строка или null",
+    "format": "jpg|png|webp или null",
+    "background": "строка или null",
+    "backgroundColor": "строка или null",
+    "quality": "строка или null",
+    "shadow": "строка или null",
+    "lighting": "строка или null",
+    "platform": "строка или null",
+    "rotation": "строка или null",
+    "scale": "строка или null",
+    "position": "строка или null",
+    "additionalRequirements": "строка или null"
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "operation": "название операции",
+      "handler": "sharp:resize|replicate:remove-background|replicate:segment|replicate:flux-edit|compose:scene|not_connected|manual_review",
+      "description": "описание на русском",
+      "status": "AVAILABLE|NOT_CONNECTED|MANUAL_REVIEW|NEEDS_INPUT",
+      "cost": "free|paid|unknown",
+      "costDetail": "строка или null",
+      "requiresConfirmation": true|false,
+      "params": {
+        "width": число или null,
+        "height": число или null,
+        "format": "строка или null",
+        "background": "строка или null",
+        "backgroundColor": "строка или null",
+        "fit": "строка или null",
+        "objectPrompt": "строка или null",
+        "prompt": "строка или null",
+        "aspectRatio": "строка или null",
+        "rotation": "строка или null",
+        "scale": "строка или null",
+        "position": "строка или null",
+        "shadow": "строка или null",
+        "quality": "строка или null"
+      }
+    }
+  ],
+  "availableOperations": ["список строк"],
+  "notConnectedOperations": ["список строк"],
+  "costSummary": {
+    "local": "строка",
+    "ai": "строка",
+    "total": "строка"
+  },
+  "needsInput": ["список строк"],
+  "manualReview": true|false,
+  "nextStep": "строка"
+}
+
 Отвечай на русском языке.
 `;
-    
+
+const responseSchema = {
+  type: "object",
+  properties: {
+    analysisText: {
+      type: "string",
+      description:
+        "Краткий структурированный текстовый анализ на русском языке.",
+    },
+    plan: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["executable", "partial", "needs_clarification"],
+        },
+        taskType: { type: "string" },
+        purpose: { type: "string" },
+        style: { type: ["string", "null"] },
+        parameters: {
+          type: "object",
+          properties: {
+            fileCount: { type: ["number", "null"] },
+            width: { type: ["number", "null"] },
+            height: { type: ["number", "null"] },
+            aspectRatio: { type: ["string", "null"] },
+            format: { type: ["string", "null"] },
+            background: { type: ["string", "null"] },
+            backgroundColor: { type: ["string", "null"] },
+            quality: { type: ["string", "null"] },
+            shadow: { type: ["string", "null"] },
+            lighting: { type: ["string", "null"] },
+            platform: { type: ["string", "null"] },
+            rotation: { type: ["string", "null"] },
+            scale: { type: ["string", "null"] },
+            position: { type: ["string", "null"] },
+            additionalRequirements: { type: ["string", "null"] },
+          },
+          required: [
+            "fileCount",
+            "width",
+            "height",
+            "aspectRatio",
+            "format",
+            "background",
+            "backgroundColor",
+            "quality",
+            "shadow",
+            "lighting",
+            "platform",
+            "rotation",
+            "scale",
+            "position",
+            "additionalRequirements",
+          ],
+          additionalProperties: false,
+        },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              operation: { type: "string" },
+              handler: {
+                type: "string",
+                enum: [
+                  "sharp:resize",
+                  "replicate:remove-background",
+                  "replicate:segment",
+                  "replicate:flux-edit",
+                  "compose:scene",
+                  "not_connected",
+                  "manual_review",
+                ],
+              },
+              description: { type: "string" },
+              status: {
+                type: "string",
+                enum: ["AVAILABLE", "NOT_CONNECTED", "MANUAL_REVIEW", "NEEDS_INPUT"],
+              },
+              cost: {
+                type: "string",
+                enum: ["free", "paid", "unknown"],
+              },
+              costDetail: { type: ["string", "null"] },
+              requiresConfirmation: { type: "boolean" },
+              params: {
+                type: "object",
+                properties: {
+                  width: { type: ["number", "null"] },
+                  height: { type: ["number", "null"] },
+                  format: { type: ["string", "null"] },
+                  background: { type: ["string", "null"] },
+                  backgroundColor: { type: ["string", "null"] },
+                  fit: { type: ["string", "null"] },
+                  objectPrompt: { type: ["string", "null"] },
+                  prompt: { type: ["string", "null"] },
+                  aspectRatio: { type: ["string", "null"] },
+                  rotation: { type: ["string", "null"] },
+                  scale: { type: ["string", "null"] },
+                  position: { type: ["string", "null"] },
+                  shadow: { type: ["string", "null"] },
+                  quality: { type: ["string", "null"] },
+                },
+                required: [
+                  "width",
+                  "height",
+                  "format",
+                  "background",
+                  "backgroundColor",
+                  "fit",
+                  "objectPrompt",
+                  "prompt",
+                  "aspectRatio",
+                  "rotation",
+                  "scale",
+                  "position",
+                  "shadow",
+                  "quality",
+                ],
+                additionalProperties: false,
+              },
+            },
+            required: [
+              "id",
+              "operation",
+              "handler",
+              "description",
+              "status",
+              "cost",
+              "costDetail",
+              "requiresConfirmation",
+              "params",
+            ],
+            additionalProperties: false,
+          },
+        },
+        availableOperations: {
+          type: "array",
+          items: { type: "string" },
+        },
+        notConnectedOperations: {
+          type: "array",
+          items: { type: "string" },
+        },
+        costSummary: {
+          type: "object",
+          properties: {
+            local: { type: "string" },
+            ai: { type: "string" },
+            total: { type: "string" },
+          },
+          required: ["local", "ai", "total"],
+          additionalProperties: false,
+        },
+        needsInput: {
+          type: "array",
+          items: { type: "string" },
+        },
+        manualReview: { type: "boolean" },
+        nextStep: { type: "string" },
+      },
+      required: [
+        "status",
+        "taskType",
+        "purpose",
+        "style",
+        "parameters",
+        "steps",
+        "availableOperations",
+        "notConnectedOperations",
+        "costSummary",
+        "needsInput",
+        "manualReview",
+        "nextStep",
+      ],
+      additionalProperties: false,
+    },
+  },
+  required: ["analysisText", "plan"],
+  additionalProperties: false,
+};
+
+export async function POST(request) {
+  try {
+    const { task } = await request.json();
+
+    if (!task || !task.trim()) {
+      return Response.json(
+        { error: "Введите ТЗ или описание задачи." },
+        { status: 400 }
+      );
+    }
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -488,6 +769,14 @@ AI/API операции:
             ],
           },
         ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "task_analysis",
+            strict: true,
+            schema: responseSchema,
+          },
+        },
       }),
     });
 
@@ -502,14 +791,34 @@ AI/API операции:
       );
     }
 
-    const text =
+    const rawText =
       data.output_text ||
       data.output
         ?.flatMap((item) => item.content || [])
         ?.find((item) => item.type === "output_text")?.text ||
-      "Анализ получен, но текст ответа не найден.";
+      "";
 
-    return Response.json({ result: text });
+    let parsed = null;
+
+    try {
+      if (rawText) {
+        parsed = JSON.parse(rawText);
+      }
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+    }
+
+    if (parsed && parsed.analysisText) {
+      return Response.json({
+        result: parsed.analysisText,
+        plan: parsed.plan || null,
+      });
+    }
+
+    return Response.json({
+      result: rawText || "Анализ получен, но текст ответа не найден.",
+      plan: null,
+    });
   } catch (error) {
     console.error(error);
 
