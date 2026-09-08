@@ -175,7 +175,31 @@ export default function Home() {
 
       const results = [];
       for (let i = 0; i < inputFiles.length; i++) {
-        const file = inputFiles[i];
+        let file = inputFiles[i];
+
+        if (fmt === "jpg" || fmt === "jpeg") {
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement("canvas");
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#FFFFFF";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(bitmap, 0, 0);
+          bitmap.close();
+
+          const flattenedBlob = await new Promise((resolve, reject) => {
+            canvas.toBlob(
+              (blob) => (blob ? resolve(blob) : reject(new Error("Не удалось подготовить изображение для JPG."))),
+              "image/jpeg",
+              0.92
+            );
+          });
+          file = new File([flattenedBlob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+            type: "image/jpeg",
+          });
+        }
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("width", String(w));
@@ -762,7 +786,7 @@ export default function Home() {
                             color: "#666",
                           }}
                         >
-                          Бесплатные операции выполняются автоматически.
+                          Бесплатные операции выполняются автоматичес��и.
                           Платные операции требуют подтверждения каждого этапа.
                         </p>
                       </div>
