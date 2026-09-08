@@ -160,6 +160,48 @@ export default function Home() {
       setBgProcessing(false);
     }
   }
+  async function editImage() {
+  if (!files.length) {
+    setEditError("Сначала выберите изображение.");
+    return;
+  }
+
+  if (!editPrompt.trim()) {
+    setEditError("Введите инструкцию для AI-редактирования.");
+    return;
+  }
+
+  setEditProcessing(true);
+  setEditError("");
+  setEditResult("");
+
+  try {
+    const formData = new FormData();
+    formData.append("file", files[0]);
+    formData.append("prompt", editPrompt.trim());
+
+    const response = await fetch("/api/edit-image", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Ошибка AI-редактирования.");
+    }
+
+    if (!data.imageUrl) {
+      throw new Error("Не получена ссылка на готовое изображение.");
+    }
+
+    setEditResult(data.imageUrl);
+  } catch (err) {
+    setEditError(err.message);
+  } finally {
+    setEditProcessing(false);
+  }
+}
 
   return (
     <main
