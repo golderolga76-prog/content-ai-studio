@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { supabase } from "./lib/supabaseClient";
 
 const STATUS_LABELS = {
   executable: "Выполнимо",
@@ -84,6 +85,38 @@ export default function Home() {
   const [stepResults, setStepResults] = useState({});
   const [executing, setExecuting] = useState(false);
   const [globalError, setGlobalError] = useState("");
+  const [user, setUser] = useState(null);
+const [credits, setCredits] = useState(0);
+
+useEffect(() => {
+  async function loadUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setUser(user ?? null);
+
+    if (user) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", user.id)
+        .single();
+
+      setCredits(data?.credits ?? 0);
+    }
+  }
+
+  loadUser();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+  });
+
+  return () => subscription.unsubscribe();
+}, []);
 
   const fileInputRef = useRef(null);
 
