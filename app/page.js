@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 
 const STATUS_LABELS = {
   executable: "Выполнимо",
@@ -38,6 +38,30 @@ const COST_LABELS = {
   unknown: "Стоимость уточняется",
 };
 
+const EXEC_COLORS = {
+  waiting: "#6b7280",
+  running: "#2563eb",
+  completed: "#16a34a",
+  failed: "#dc2626",
+  skipped: "#9ca3af",
+  waiting_confirmation: "#d97706",
+};
+
+const EXEC_LABELS = {
+  waiting: "Ожидание",
+  running: "Выполнение...",
+  completed: "Готово",
+  failed: "Ошибка",
+  skipped: "Пропущено",
+  waiting_confirmation: "Ожидает подтверждения",
+};
+
+const CONNECTED_HANDLERS = new Set([
+  "sharp:resize",
+  "replicate:remove-background",
+  "replicate:segment",
+]);
+
 function formatValue(value) {
   if (value === null || value === undefined || value === "") {
     return "не указан";
@@ -53,27 +77,20 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const [files, setFiles] = useState([]);
-  const [confirmed, setConfirmed] = useState(false);
+  const [planConfirmed, setPlanConfirmed] = useState(false);
 
-  const [width, setWidth] = useState(340);
-  const [height, setHeight] = useState(340);
-  const [format, setFormat] = useState("jpg");
+  const [stepStates, setStepStates] = useState({});
+  const [stepResults, setStepResults] = useState({});
+  const [executing, setExecuting] = useState(false);
+  const [globalError, setGlobalError] = useState("");
 
-  const [processing, setProcessing] = useState(false);
-  const [processedFiles, setProcessedFiles] = useState([]);
-  const [processError, setProcessError] = useState("");
+  const fileInputRef = useRef(null);
 
-  const [bgProcessing, setBgProcessing] = useState(false);
-  const [bgResult, setBgResult] = useState("");
-  const [bgError, setBgError] = useState("");
-  const [editPrompt, setEditPrompt] = useState("");
-  const [editProcessing, setEditProcessing] = useState(false);
-  const [editResult, setEditResult] = useState("");
-  const [editError, setEditError] = useState("");
-  const [segmentPrompt, setSegmentPrompt] = useState("");
-  const [segmentProcessing, setSegmentProcessing] = useState(false);
-  const [segmentResults, setSegmentResults] = useState([]);
-  const [segmentError, setSegmentError] = useState("");
+  const resetExecution = useCallback(() => {
+    setStepStates({});
+    setStepResults({});
+    setGlobalError("");
+  }, []);
 
   async function analyzeTask() {
     if (!task.trim()) {
@@ -85,17 +102,13 @@ export default function Home() {
     setError("");
     setResult("");
     setPlan(null);
-    setConfirmed(false);
-    setProcessedFiles([]);
-    setBgResult("");
-    setBgError("");
+    setPlanConfirmed(false);
+    resetExecution();
 
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task }),
       });
 
@@ -110,21 +123,19 @@ export default function Home() {
       if (data.plan) {
         setPlan(data.plan);
 
-        const resizeStep = data.plan.steps?.find(
-          (s) => s.handler === "sharp:resize"
-        );
-
-        if (resizeStep) {
-          if (resizeStep.params?.width) {
-            setWidth(resizeStep.params.width);
-          }
-          if (resizeStep.params?.height) {
-            setHeight(resizeStep.params.height);
-          }
-          if (resizeStep.params?.format) {
-            setFormat(resizeStep.params.format);
+        const initialStates = {};
+        for (const step of data.plan.steps || []) {
+          if (!CONNECTED_HANDLERS.has(step.handler)) {
+            initialStates[step.id] = "skipped";
+          } else if (step.status === "NOT_CONNECTED") {
+            initialStates[step.id] = "skipped";
+          } else if (step.requiresConfirmation) {
+            initialStates[step.id] = "waiting_confirmation";
+          } else {
+            initialStates[step.id] = "waiting";
           }
         }
+        setStepStates(initialStates);
       }
     } catch (err) {
       setError(err.message);
@@ -136,31 +147,40 @@ export default function Home() {
   function handleFiles(event) {
     const selectedFiles = Array.from(event.target.files || []);
     setFiles(selectedFiles);
-    setConfirmed(false);
-    setProcessedFiles([]);
-    setProcessError("");
-    setBgResult("");
-    setBgError("");
+    setPlanConfirmed(false);
+    resetExecution();
   }
 
-  async function processImages() {
-    if (!files.length) return;
+  function confirmPlan() {
+    if (!files.length || !plan) return;
+    setPlanConfirmed(true);
+    setGlobalError("");
+  }
 
-    setProcessing(true);
-    setProcessError("");
-    setProcessedFiles([]);
+  function updateStepState(stepId, state) {
+    setStepStates((prev) => ({ ...prev, [stepId]: state }));
+  }
 
-    try {
+  function setStepResult(stepId, result) {
+    setStepResults((prev) => ({ ...prev, [stepId]: result }));
+  }
+
+  async function runStep(step, inputFiles) {
+    const p = step.params || {};
+
+    if (step.handler === "sharp:resize") {
+      const w = p.width || plan?.parameters?.width || 340;
+      const h = p.height || plan?.parameters?.height || 340;
+      const fmt = p.format || plan?.parameters?.format || "jpg";
+
       const results = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-
+      for (let i = 0; i < inputFiles.length; i++) {
+        const file = inputFiles[i];
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("width", String(width));
-        formData.append("height", String(height));
-        formData.append("format", format);
+        formData.append("width", String(w));
+        formData.append("height", String(h));
+        formData.append("format", String(fmt));
 
         const response = await fetch("/api/process-image", {
           method: "POST",
@@ -169,42 +189,21 @@ export default function Home() {
 
         if (!response.ok) {
           const data = await response.json().catch(() => null);
-          throw new Error(
-            data?.error || `Ошибка обработки файла ${file.name}`
-          );
+          throw new Error(data?.error || `Ошибка обработки файла ${file.name}`);
         }
 
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
-
-        const originalName =
-          file.name.replace(/\.[^/.]+$/, "") || `image-${i + 1}`;
-
-        results.push({
-          name: `${originalName}-processed.${format}`,
-          url,
-        });
+        const originalName = file.name.replace(/\.[^/.]+$/, "") || `image-${i + 1}`;
+        results.push({ name: `${originalName}-processed.${fmt}`, url, blob });
       }
 
-      setProcessedFiles(results);
-    } catch (err) {
-      setProcessError(err.message);
-    } finally {
-      setProcessing(false);
+      return { type: "files", items: results };
     }
-  }
 
-  async function removeBackground() {
-    if (!files.length) return;
-
-    setBgProcessing(true);
-    setBgError("");
-    setBgResult("");
-
-    try {
+    if (step.handler === "replicate:remove-background") {
       const formData = new FormData();
-
-      formData.append("file", files[0]);
+      formData.append("file", inputFiles[0]);
 
       const response = await fetch("/api/remove-background", {
         method: "POST",
@@ -216,81 +215,22 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(data.error || "Ошибка удаления фона.");
       }
-
       if (!data.url) {
         throw new Error("Не получена ссылка на готовое изображение.");
       }
 
-      setBgResult(data.url);
-    } catch (err) {
-      setBgError(err.message);
-    } finally {
-      setBgProcessing(false);
-    }
-  }
-
-  async function editImage() {
-    if (!files.length) {
-      setEditError("Сначала выберите изображение.");
-      return;
+      return { type: "url", url: data.url };
     }
 
-    if (!editPrompt.trim()) {
-      setEditError("Введите инструкцию для AI-редактирования.");
-      return;
-    }
-
-    setEditProcessing(true);
-    setEditError("");
-    setEditResult("");
-
-    try {
-      const formData = new FormData();
-      formData.append("file", files[0]);
-      formData.append("prompt", editPrompt.trim());
-
-      const response = await fetch("/api/edit-image", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Ошибка AI-редактирования.");
+    if (step.handler === "replicate:segment") {
+      const objectPrompt = p.objectPrompt || "";
+      if (!objectPrompt) {
+        throw new Error("Не указан объект для выделения в плане.");
       }
 
-      if (!data.imageUrl) {
-        throw new Error("Не получена ссылка на готовое изображение.");
-      }
-
-      setEditResult(data.imageUrl);
-    } catch (err) {
-      setEditError(err.message);
-    } finally {
-      setEditProcessing(false);
-    }
-  }
-
-  async function segmentObject() {
-    if (!files.length) {
-      setSegmentError("Сначала выберите изображение.");
-      return;
-    }
-
-    if (!segmentPrompt.trim()) {
-      setSegmentError("Укажите объект для выделения.");
-      return;
-    }
-
-    setSegmentProcessing(true);
-    setSegmentError("");
-    setSegmentResults([]);
-
-    try {
       const formData = new FormData();
-      formData.append("file", files[0]);
-      formData.append("objectPrompt", segmentPrompt.trim());
+      formData.append("file", inputFiles[0]);
+      formData.append("objectPrompt", objectPrompt);
 
       const response = await fetch("/api/segment-object", {
         method: "POST",
@@ -302,18 +242,76 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(data.error || "Ошибка выделения объекта.");
       }
-
       if (!data.urls || !data.urls.length) {
         throw new Error("Модель не вернула результат.");
       }
 
-      setSegmentResults(data.urls);
-    } catch (err) {
-      setSegmentError(err.message);
-    } finally {
-      setSegmentProcessing(false);
+      return { type: "urls", urls: data.urls };
     }
+
+    throw new Error(`Обработчик ${step.handler} не подключён.`);
   }
+
+  async function executePlan() {
+    if (!plan || !files.length || !planConfirmed) return;
+
+    setExecuting(true);
+    setGlobalError("");
+
+    const steps = plan.steps || [];
+    let currentFiles = [...files];
+
+    for (const step of steps) {
+      if (!CONNECTED_HANDLERS.has(step.handler)) {
+        updateStepState(step.id, "skipped");
+        continue;
+      }
+
+      if (step.status === "NOT_CONNECTED") {
+        updateStepState(step.id, "skipped");
+        continue;
+      }
+
+      if (step.requiresConfirmation && stepStates[step.id] !== "confirmed") {
+        updateStepState(step.id, "waiting_confirmation");
+        continue;
+      }
+
+      updateStepState(step.id, "running");
+
+      try {
+        const res = await runStep(step, currentFiles);
+        setStepResult(step.id, res);
+        updateStepState(step.id, "completed");
+
+        if (res.type === "files" && res.items?.length) {
+          const blobs = res.items.map((item) => item.blob);
+          currentFiles = blobs.length ? blobs : currentFiles;
+        }
+      } catch (err) {
+        setStepResult(step.id, { type: "error", message: err.message });
+        updateStepState(step.id, "failed");
+        setGlobalError(err.message);
+        break;
+      }
+    }
+
+    setExecuting(false);
+  }
+
+  function confirmPaidStep(stepId) {
+    setStepStates((prev) => ({ ...prev, [stepId]: "confirmed" }));
+  }
+
+  const connectedSteps = (plan?.steps || []).filter((s) =>
+    CONNECTED_HANDLERS.has(s.handler)
+  );
+  const allConnectedCompleted = connectedSteps.every(
+    (s) => stepStates[s.id] === "completed" || stepStates[s.id] === "skipped"
+  );
+  const hasPendingPaid = connectedSteps.some(
+    (s) => stepStates[s.id] === "waiting_confirmation"
+  );
 
   const params = plan?.parameters;
 
@@ -356,7 +354,6 @@ export default function Home() {
             }}
           >
             <h3>Инструменты</h3>
-
             <div style={{ display: "grid", gap: "10px" }}>
               <button>Анализ ТЗ</button>
               <button>Изображения</button>
@@ -436,7 +433,6 @@ export default function Home() {
                   }}
                 >
                   <strong>Структурированный план</strong>
-
                   <span
                     style={{
                       padding: "3px 10px",
@@ -456,13 +452,7 @@ export default function Home() {
                   </span>
                 </div>
 
-                <div
-                  style={{
-                    padding: "18px",
-                    display: "grid",
-                    gap: "16px",
-                  }}
-                >
+                <div style={{ padding: "18px", display: "grid", gap: "16px" }}>
                   <div
                     style={{
                       display: "grid",
@@ -473,10 +463,7 @@ export default function Home() {
                   >
                     <PlanParam label="Тип задачи" value={plan.taskType} />
                     <PlanParam label="Назначение" value={plan.purpose} />
-                    <PlanParam
-                      label="Стиль"
-                      value={formatValue(plan.style)}
-                    />
+                    <PlanParam label="Стиль" value={formatValue(plan.style)} />
                     <PlanParam
                       label="Количество файлов"
                       value={formatValue(params?.fileCount)}
@@ -542,150 +529,15 @@ export default function Home() {
 
                       <div style={{ display: "grid", gap: "10px" }}>
                         {plan.steps.map((step, index) => (
-                          <div
+                          <StepCard
                             key={step.id || index}
-                            style={{
-                              padding: "14px",
-                              border: "1px solid #e5e5e5",
-                              borderRadius: "10px",
-                              background: "#fff",
-                              display: "grid",
-                              gridTemplateColumns: "auto 1fr auto",
-                              gap: "12px",
-                              alignItems: "start",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: "28px",
-                                height: "28px",
-                                borderRadius: "50%",
-                                background: "#f0f0f0",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "14px",
-                                fontWeight: 700,
-                                color: "#333",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {index + 1}
-                            </div>
-
-                            <div>
-                              <div style={{ fontWeight: 600, fontSize: "14px" }}>
-                                {step.operation}
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize: "13px",
-                                  color: "#666",
-                                  marginTop: "4px",
-                                }}
-                              >
-                                {step.description}
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize: "12px",
-                                  color: "#999",
-                                  marginTop: "6px",
-                                }}
-                              >
-                                {HANDLER_LABELS[step.handler] || step.handler}
-                              </div>
-
-                              {step.params &&
-                                Object.entries(step.params).some(
-                                  ([, v]) => v !== null && v !== undefined && v !== ""
-                                ) && (
-                                  <div
-                                    style={{
-                                      marginTop: "8px",
-                                      display: "flex",
-                                      gap: "6px",
-                                      flexWrap: "wrap",
-                                    }}
-                                  >
-                                    {Object.entries(step.params).map(
-                                      ([key, value]) => {
-                                        if (
-                                          value === null ||
-                                          value === undefined ||
-                                          value === ""
-                                        ) {
-                                          return null;
-                                        }
-                                        return (
-                                          <span
-                                            key={key}
-                                            style={{
-                                              padding: "2px 8px",
-                                              background: "#f5f5f5",
-                                              borderRadius: "6px",
-                                              fontSize: "12px",
-                                              color: "#555",
-                                            }}
-                                          >
-                                            {key}: {String(value)}
-                                          </span>
-                                        );
-                                      }
-                                    )}
-                                  </div>
-                                )}
-                            </div>
-
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "6px",
-                                alignItems: "flex-end",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  padding: "3px 10px",
-                                  borderRadius: "20px",
-                                  fontSize: "12px",
-                                  fontWeight: 600,
-                                  color: "#fff",
-                                  background:
-                                    STEP_STATUS_COLORS[step.status] ||
-                                    "#999",
-                                }}
-                              >
-                                {STEP_STATUS_LABELS[step.status] ||
-                                  step.status}
-                              </span>
-
-                              <span
-                                style={{
-                                  fontSize: "12px",
-                                  color: step.cost === "free" ? "#16a34a" : "#dc2626",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {COST_LABELS[step.cost] || step.cost}
-                              </span>
-
-                              {step.requiresConfirmation && (
-                                <span
-                                  style={{
-                                    fontSize: "11px",
-                                    color: "#d97706",
-                                  }}
-                                >
-                                  требует подтверждения
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                            step={step}
+                            index={index}
+                            execState={stepStates[step.id] || "waiting"}
+                            execResult={stepResults[step.id]}
+                            onConfirmPaid={() => confirmPaidStep(step.id)}
+                            executing={executing}
+                          />
                         ))}
                       </div>
                     </div>
@@ -774,7 +626,7 @@ export default function Home() {
                     </div>
                   )}
 
-                  {plan.manualReview && (
+                  {plan.manualReview && allConnectedCompleted && (
                     <div
                       style={{
                         padding: "14px",
@@ -784,7 +636,10 @@ export default function Home() {
                         fontSize: "14px",
                       }}
                     >
-                      <strong>Требуется ручная проверка результата.</strong>
+                      <strong>
+                        Требуется ручная проверка результата перед выдачей
+                        клиенту.
+                      </strong>
                     </div>
                   )}
 
@@ -815,9 +670,10 @@ export default function Home() {
                   borderRadius: "12px",
                 }}
               >
-                <h3>Загрузить файлы</h3>
+                <h3>Файлы</h3>
 
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   multiple
@@ -831,282 +687,101 @@ export default function Home() {
                 )}
 
                 <button
-                  onClick={() => setConfirmed(true)}
-                  disabled={!files.length}
+                  onClick={confirmPlan}
+                  disabled={!files.length || planConfirmed}
                   style={{
+                    marginTop: "8px",
                     padding: "12px 18px",
                     borderRadius: "10px",
                     border: "none",
-                    background: files.length ? "#111" : "#aaa",
+                    background:
+                      files.length && !planConfirmed ? "#dc2626" : "#aaa",
                     color: "#fff",
                   }}
                 >
-                  Подтвердить план
+                  {planConfirmed ? "План подтверждён" : "Подтвердить план"}
                 </button>
 
-                {confirmed && (
+                {planConfirmed && plan && (
                   <div
                     style={{
-                      marginTop: "20px",
+                      marginTop: "16px",
                       padding: "16px",
-                      background: "#eef7ee",
+                      background: "#fff5f5",
                       borderRadius: "10px",
+                      border: "1px solid #fecaca",
                     }}
                   >
-                    <strong>План подтверждён.</strong>
-
-                    <h4>Локальная обработка — $0</h4>
-
                     <div
                       style={{
                         display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
                         gap: "12px",
                         flexWrap: "wrap",
                       }}
                     >
-                      <input
-                        type="number"
-                        value={width}
-                        onChange={(e) => setWidth(e.target.value)}
-                        style={{ width: "90px", padding: "8px" }}
-                      />
+                      <div>
+                        <strong>Запуск выполнения</strong>
+                        <p
+                          style={{
+                            margin: "4px 0 0 0",
+                            fontSize: "13px",
+                            color: "#666",
+                          }}
+                        >
+                          Бесплатные операции выполняются автоматически.
+                          Платные операции требуют подтверждения каждого этапа.
+                        </p>
+                      </div>
 
-                      <input
-                        type="number"
-                        value={height}
-                        onChange={(e) => setHeight(e.target.value)}
-                        style={{ width: "90px", padding: "8px" }}
-                      />
-
-                      <select
-                        value={format}
-                        onChange={(e) => setFormat(e.target.value)}
-                        style={{ padding: "8px" }}
+                      <button
+                        onClick={executePlan}
+                        disabled={executing}
+                        style={{
+                          padding: "12px 24px",
+                          borderRadius: "10px",
+                          border: "none",
+                          background: executing ? "#999" : "#dc2626",
+                          color: "#fff",
+                          fontSize: "15px",
+                          fontWeight: 600,
+                        }}
                       >
-                        <option value="jpg">JPG</option>
-                        <option value="png">PNG</option>
-                        <option value="webp">WebP</option>
-                      </select>
+                        {executing
+                          ? "Выполняю..."
+                          : hasPendingPaid
+                          ? "Запустить доступные этапы"
+                          : "Запустить выполнение"}
+                      </button>
                     </div>
 
-                    <button
-                      onClick={processImages}
-                      disabled={processing}
-                      style={{
-                        marginTop: "14px",
-                        padding: "12px 18px",
-                      }}
-                    >
-                      {processing
-                        ? "Обрабатываю..."
-                        : "Изменить размер / формат"}
-                    </button>
-
-                    <hr style={{ margin: "24px 0" }} />
-
-                    <h4>AI/API обработка</h4>
-
-                    <p>
-                      Удаление фона через Replicate. Пока тестируем только
-                      первое выбранное изображение.
-                    </p>
-
-                    <button
-                      onClick={removeBackground}
-                      disabled={bgProcessing}
-                      style={{
-                        padding: "12px 18px",
-                        background: "#111",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "10px",
-                      }}
-                    >
-                      {bgProcessing
-                        ? "Удаляю фон..."
-                        : "Удалить фон — тест 1 фото"}
-                    </button>
-
-                    {bgError && (
-                      <p style={{ marginTop: "14px" }}>{bgError}</p>
-                    )}
-
-                    {bgResult && (
-                      <div style={{ marginTop: "18px" }}>
-                        <p>
-                          <strong>Фон удалён:</strong>
-                        </p>
-
-                        <img
-                          src={bgResult}
-                          alt="Результат"
-                          style={{
-                            maxWidth: "340px",
-                            width: "100%",
-                            border: "1px solid #ddd",
-                          }}
-                        />
-
-                        <br />
-
-                        <a
-                          href={bgResult}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Открыть готовое изображение
-                        </a>
-                      </div>
-                    )}
-
-                    <hr style={{ margin: "24px 0" }} />
-
-                    <h4>AI-редактирование изображения</h4>
-
-                    <p>
-                      Введите инструкцию для FLUX Kontext Pro.
-                      Пока тестируем только первое выбранное изображение.
-                    </p>
-
-                    <textarea
-                      value={editPrompt}
-                      onChange={(e) => setEditPrompt(e.target.value)}
-                      placeholder="Например: слегка наклони баночку вправо, расположи рядом с коробкой, добавь мягкую естественную тень и студийное освещение"
-                      style={{
-                        width: "100%",
-                        minHeight: "110px",
-                        padding: "12px",
-                        marginTop: "10px",
-                        marginBottom: "12px",
-                        border: "1px solid #ddd",
-                        borderRadius: "10px",
-                        resize: "vertical",
-                      }}
-                    />
-
-                    <button
-                      onClick={editImage}
-                      disabled={editProcessing}
-                      style={{
-                        padding: "12px 18px",
-                        background: "#111",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "10px",
-                      }}
-                    >
-                      {editProcessing
-                        ? "AI обрабатывает..."
-                        : "AI-редактирование — тест 1 фото"}
-                    </button>
-
-                    {editError && (
-                      <p style={{ marginTop: "14px" }}>{editError}</p>
-                    )}
-
-                    {editResult && (
-                      <div style={{ marginTop: "18px" }}>
-                        <p>
-                          <strong>AI-редактирование готово:</strong>
-                        </p>
-
-                        <img
-                          src={editResult}
-                          alt="AI результат"
-                          style={{
-                            maxWidth: "340px",
-                            width: "100%",
-                            border: "1px solid #ddd",
-                            borderRadius: "10px",
-                          }}
-                        />
-
-                        <p style={{ marginTop: "10px" }}>
-                          <a
-                            href={editResult}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Открыть готовое изображение
-                          </a>
-                        </p>
-                      </div>
-                    )}
-
-                    <hr style={{ margin: "24px 0" }} />
-
-                    <h4>Выделение объекта</h4>
-
-                    <p>
-                      Введите объект, который нужно найти на первом изображении.
-                    </p>
-
-                    <input
-                      value={segmentPrompt}
-                      onChange={(e) => setSegmentPrompt(e.target.value)}
-                      placeholder="Например: jar или box"
-                      style={{
-                        width: "100%",
-                        padding: "12px",
-                        marginBottom: "12px",
-                        border: "1px solid #ddd",
-                        borderRadius: "10px",
-                      }}
-                    />
-
-                    <button
-                      onClick={segmentObject}
-                      disabled={segmentProcessing}
-                    >
-                      {segmentProcessing
-                        ? "Ищу объект..."
-                        : "Выделить объект — тест"}
-                    </button>
-
-                    {segmentError && (
-                      <p style={{ marginTop: "14px" }}>
-                        {segmentError}
+                    {globalError && (
+                      <p
+                        style={{
+                          marginTop: "12px",
+                          color: "#dc2626",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {globalError}
                       </p>
                     )}
 
-                    {segmentResults.length > 0 && (
-                      <div style={{ marginTop: "18px" }}>
-                        <p>
-                          <strong>Результат выделения:</strong>
-                        </p>
-
-                        {segmentResults.map((url, index) => (
-                          <div key={index} style={{ marginBottom: "16px" }}>
-                            <img
-                              src={url}
-                              alt={`Результат ${index + 1}`}
-                              style={{
-                                maxWidth: "340px",
-                                width: "100%",
-                                border: "1px solid #ddd",
-                                borderRadius: "10px",
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
+                    {allConnectedCompleted && !globalError && (
+                      <p
+                        style={{
+                          marginTop: "12px",
+                          color: "#16a34a",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Все доступные этапы завершены. Проверьте результаты
+                        выше.
+                        {plan.manualReview &&
+                          " Требуется ручная проверка перед выдачей."}
+                      </p>
                     )}
-                  </div>
-                )}
-
-                {processError && <p>{processError}</p>}
-
-                {processedFiles.length > 0 && (
-                  <div style={{ marginTop: "24px" }}>
-                    <h3>Готовые файлы</h3>
-
-                    {processedFiles.map((file) => (
-                      <div key={file.url}>
-                        <a href={file.url} download={file.name}>
-                          Скачать {file.name}
-                        </a>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
@@ -1133,4 +808,334 @@ function PlanParam({ label, value }) {
       <div style={{ fontSize: "14px", fontWeight: 500 }}>{value}</div>
     </div>
   );
+}
+
+function StepCard({ step, index, execState, execResult, onConfirmPaid, executing }) {
+  const isPaid = step.cost === "paid";
+  const isNotConnected = !CONNECTED_HANDLERS.has(step.handler) ||
+    step.status === "NOT_CONNECTED";
+  const isWaitingConfirmation = execState === "waiting_confirmation";
+  const isRunning = execState === "running";
+  const isCompleted = execState === "completed";
+  const isFailed = execState === "failed";
+  const isSkipped = execState === "skipped";
+
+  return (
+    <div
+      style={{
+        padding: "14px",
+        border: `1px solid ${
+          isFailed ? "#fecaca" :
+          isCompleted ? "#d1fae5" :
+          isRunning ? "#bfdbfe" :
+          isSkipped ? "#f3f4f6" :
+          isWaitingConfirmation ? "#fed7aa" :
+          "#e5e5e5"
+        }`,
+        borderRadius: "10px",
+        background: isSkipped ? "#fafafa" : "#fff",
+        opacity: isSkipped ? 0.65 : 1,
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr auto",
+          gap: "12px",
+          alignItems: "start",
+        }}
+      >
+        <div
+          style={{
+            width: "28px",
+            height: "28px",
+            borderRadius: "50%",
+            background: "#f0f0f0",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "14px",
+            fontWeight: 700,
+            color: "#333",
+            flexShrink: 0,
+          }}
+        >
+          {index + 1}
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 600, fontSize: "14px" }}>
+            {step.operation}
+          </div>
+
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#666",
+              marginTop: "4px",
+            }}
+          >
+            {step.description}
+          </div>
+
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#999",
+              marginTop: "6px",
+            }}
+          >
+            {HANDLER_LABELS[step.handler] || step.handler}
+          </div>
+
+          {step.params &&
+            Object.entries(step.params).some(
+              ([, v]) => v !== null && v !== undefined && v !== ""
+            ) && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  display: "flex",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                }}
+              >
+                {Object.entries(step.params).map(([key, value]) => {
+                  if (value === null || value === undefined || value === "") {
+                    return null;
+                  }
+                  return (
+                    <span
+                      key={key}
+                      style={{
+                        padding: "2px 8px",
+                        background: "#f5f5f5",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        color: "#555",
+                      }}
+                    >
+                      {key}: {String(value)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+          {isWaitingConfirmation && (
+            <div
+              style={{
+                marginTop: "10px",
+                padding: "10px",
+                background: "#fff7ed",
+                borderRadius: "8px",
+                border: "1px solid #fed7aa",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 8px 0",
+                  fontSize: "13px",
+                  color: "#9a3412",
+                }}
+              >
+                Это платная операция. Подтвердите запуск.
+              </p>
+              <button
+                onClick={onConfirmPaid}
+                disabled={executing}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#dc2626",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                Подтвердить платный этап
+              </button>
+            </div>
+          )}
+
+          {isCompleted && execResult && <StepResult result={execResult} />}
+
+          {isFailed && execResult?.message && (
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "13px",
+                color: "#dc2626",
+              }}
+            >
+              {execResult.message}
+            </div>
+          )}
+
+          {isSkipped && (
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "13px",
+                color: "#9ca3af",
+              }}
+            >
+              {isNotConnected
+                ? "Операция не подключена — выполнение пропущено."
+                : "Этап пропущен."}
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            alignItems: "flex-end",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              padding: "3px 10px",
+              borderRadius: "20px",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "#fff",
+              background:
+                EXEC_COLORS[execState] ||
+                STEP_STATUS_COLORS[step.status] ||
+                "#999",
+            }}
+          >
+            {EXEC_LABELS[execState] ||
+              STEP_STATUS_LABELS[step.status] ||
+              step.status}
+          </span>
+
+          <span
+            style={{
+              fontSize: "12px",
+              color: step.cost === "free" ? "#16a34a" : "#dc2626",
+              fontWeight: 600,
+            }}
+          >
+            {COST_LABELS[step.cost] || step.cost}
+          </span>
+
+          {step.requiresConfirmation && !isWaitingConfirmation && (
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#d97706",
+              }}
+            >
+              требует подтверждения
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepResult({ result }) {
+  if (result.type === "files" && result.items?.length) {
+    return (
+      <div style={{ marginTop: "10px" }}>
+        <p
+          style={{
+            margin: "0 0 8px 0",
+            fontSize: "13px",
+            color: "#16a34a",
+            fontWeight: 600,
+          }}
+        >
+          Готовые файлы:
+        </p>
+        {result.items.map((file, i) => (
+          <div key={i} style={{ marginBottom: "6px" }}>
+            <a
+              href={file.url}
+              download={file.name}
+              style={{ fontSize: "13px" }}
+            >
+              Скачать {file.name}
+            </a>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (result.type === "url" && result.url) {
+    return (
+      <div style={{ marginTop: "10px" }}>
+        <p
+          style={{
+            margin: "0 0 8px 0",
+            fontSize: "13px",
+            color: "#16a34a",
+            fontWeight: 600,
+          }}
+        >
+          Результат:
+        </p>
+        <img
+          src={result.url}
+          alt="Результат"
+          style={{
+            maxWidth: "340px",
+            width: "100%",
+            border: "1px solid #ddd",
+            borderRadius: "8px",
+          }}
+        />
+        <br />
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: "13px" }}
+        >
+          Открыть изображение
+        </a>
+      </div>
+    );
+  }
+
+  if (result.type === "urls" && result.urls?.length) {
+    return (
+      <div style={{ marginTop: "10px" }}>
+        <p
+          style={{
+            margin: "0 0 8px 0",
+            fontSize: "13px",
+            color: "#16a34a",
+            fontWeight: 600,
+          }}
+        >
+          Результат выделения:
+        </p>
+        {result.urls.map((url, i) => (
+          <div key={i} style={{ marginBottom: "12px" }}>
+            <img
+              src={url}
+              alt={`Результат ${i + 1}`}
+              style={{
+                maxWidth: "340px",
+                width: "100%",
+                border: "1px solid #ddd",
+                borderRadius: "8px",
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
 }
