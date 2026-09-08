@@ -287,6 +287,38 @@ export default function Home() {
         if (res.type === "files" && res.items?.length) {
           const blobs = res.items.map((item) => item.blob);
           currentFiles = blobs.length ? blobs : currentFiles;
+        } else if (res.type === "url" && res.url) {
+          const response = await fetch(res.url);
+          if (!response.ok) {
+            throw new Error("Не удалось получить результат предыдущего шага.");
+          }
+          const blob = await response.blob();
+          const sourceName = currentFiles[0]?.name || "image";
+          const extension = blob.type.split("/")[1] || "png";
+          currentFiles = [
+            new File([blob], `${sourceName.replace(/\.[^/.]+$/, "")}-processed.${extension}`, {
+              type: blob.type,
+            }),
+          ];
+        } else if (res.type === "urls" && res.urls?.length) {
+          const nextFiles = [];
+          for (let i = 0; i < res.urls.length; i++) {
+            const response = await fetch(res.urls[i]);
+            if (!response.ok) {
+              throw new Error("Не удалось получить результат предыдущего шага.");
+            }
+            const blob = await response.blob();
+            const sourceName = currentFiles[i]?.name || currentFiles[0]?.name || `image-${i + 1}`;
+            const extension = blob.type.split("/")[1] || "png";
+            nextFiles.push(
+              new File([blob], `${sourceName.replace(/\.[^/.]+$/, "")}-processed.${extension}`, {
+                type: blob.type,
+              })
+            );
+          }
+          if (nextFiles.length) {
+            currentFiles = nextFiles;
+          }
         }
       } catch (err) {
         setStepResult(step.id, { type: "error", message: err.message });
