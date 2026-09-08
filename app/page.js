@@ -22,6 +22,10 @@ export default function Home() {
   const [bgProcessing, setBgProcessing] = useState(false);
   const [bgResult, setBgResult] = useState("");
   const [bgError, setBgError] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editProcessing, setEditProcessing] = useState(false);
+  const [editResult, setEditResult] = useState("");
+  const [editError, setEditError] = useState("");
 
   async function analyzeTask() {
     if (!task.trim()) {
