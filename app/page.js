@@ -19,6 +19,10 @@ export default function Home() {
   const [processedFiles, setProcessedFiles] = useState([]);
   const [processError, setProcessError] = useState("");
 
+  const [bgProcessing, setBgProcessing] = useState(false);
+  const [bgResult, setBgResult] = useState("");
+  const [bgError, setBgError] = useState("");
+
   async function analyzeTask() {
     if (!task.trim()) {
       setError("Введите ТЗ или описание задачи.");
@@ -30,6 +34,8 @@ export default function Home() {
     setResult("");
     setConfirmed(false);
     setProcessedFiles([]);
+    setBgResult("");
+    setBgError("");
 
     try {
       const response = await fetch("/api/analyze", {
@@ -60,6 +66,8 @@ export default function Home() {
     setConfirmed(false);
     setProcessedFiles([]);
     setProcessError("");
+    setBgResult("");
+    setBgError("");
   }
 
   async function processImages() {
@@ -110,6 +118,42 @@ export default function Home() {
       setProcessError(err.message);
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function removeBackground() {
+    if (!files.length) return;
+
+    setBgProcessing(true);
+    setBgError("");
+    setBgResult("");
+
+    try {
+      const formData = new FormData();
+
+      // Пока тестируем только первое выбранное изображение
+      formData.append("file", files[0]);
+
+      const response = await fetch("/api/remove-background", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка удаления фона.");
+      }
+
+      if (!data.url) {
+        throw new Error("Не получена ссылка на готовое изображение.");
+      }
+
+      setBgResult(data.url);
+    } catch (err) {
+      setBgError(err.message);
+    } finally {
+      setBgProcessing(false);
     }
   }
 
@@ -181,23 +225,20 @@ export default function Home() {
               }}
             />
 
-            <div style={{ marginTop: "16px" }}>
-              <button
-                onClick={analyzeTask}
-                disabled={loading}
-                style={{
-                  padding: "12px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: loading ? "default" : "pointer",
-                  opacity: loading ? 0.6 : 1,
-                }}
-              >
-                {loading ? "Анализирую..." : "Анализировать"}
-              </button>
-            </div>
+            <button
+              onClick={analyzeTask}
+              disabled={loading}
+              style={{
+                marginTop: "16px",
+                padding: "12px 18px",
+                borderRadius: "10px",
+                border: "none",
+                background: "#111",
+                color: "#fff",
+              }}
+            >
+              {loading ? "Анализирую..." : "Анализировать"}
+            </button>
 
             <div
               style={{
@@ -209,17 +250,8 @@ export default function Home() {
                 lineHeight: "1.5",
               }}
             >
-              {error && <p style={{ margin: 0 }}>{error}</p>}
-
-              {!error && !result && (
-                <>
-                  <strong>Здесь будет результат:</strong>
-                  <p>
-                    план работы, стоимость, этапы и подтверждение каждого шага.
-                  </p>
-                </>
-              )}
-
+              {error && error}
+              {!error && !result && "Здесь будет результат анализа ТЗ."}
               {result && result}
             </div>
 
@@ -232,7 +264,7 @@ export default function Home() {
                   borderRadius: "12px",
                 }}
               >
-                <h3 style={{ marginTop: 0 }}>Загрузить файлы</h3>
+                <h3>Загрузить файлы</h3>
 
                 <input
                   type="file"
@@ -249,14 +281,13 @@ export default function Home() {
 
                 <button
                   onClick={() => setConfirmed(true)}
-                  disabled={files.length === 0}
+                  disabled={!files.length}
                   style={{
                     padding: "12px 18px",
                     borderRadius: "10px",
                     border: "none",
-                    background: files.length === 0 ? "#aaa" : "#111",
+                    background: files.length ? "#111" : "#aaa",
                     color: "#fff",
-                    cursor: files.length === 0 ? "default" : "pointer",
                   }}
                 >
                   Подтвердить план
@@ -273,91 +304,125 @@ export default function Home() {
                   >
                     <strong>План подтверждён.</strong>
 
+                    <h4>Локальная обработка — $0</h4>
+
                     <div
                       style={{
                         display: "flex",
                         gap: "12px",
                         flexWrap: "wrap",
-                        marginTop: "16px",
                       }}
                     >
-                      <label>
-                        Ширина
-                        <br />
-                        <input
-                          type="number"
-                          value={width}
-                          onChange={(e) => setWidth(e.target.value)}
-                          style={{ width: "90px", padding: "8px" }}
-                        />
-                      </label>
+                      <input
+                        type="number"
+                        value={width}
+                        onChange={(e) => setWidth(e.target.value)}
+                        style={{ width: "90px", padding: "8px" }}
+                      />
 
-                      <label>
-                        Высота
-                        <br />
-                        <input
-                          type="number"
-                          value={height}
-                          onChange={(e) => setHeight(e.target.value)}
-                          style={{ width: "90px", padding: "8px" }}
-                        />
-                      </label>
+                      <input
+                        type="number"
+                        value={height}
+                        onChange={(e) => setHeight(e.target.value)}
+                        style={{ width: "90px", padding: "8px" }}
+                      />
 
-                      <label>
-                        Формат
-                        <br />
-                        <select
-                          value={format}
-                          onChange={(e) => setFormat(e.target.value)}
-                          style={{ padding: "8px" }}
-                        >
-                          <option value="jpg">JPG</option>
-                          <option value="png">PNG</option>
-                          <option value="webp">WebP</option>
-                        </select>
-                      </label>
+                      <select
+                        value={format}
+                        onChange={(e) => setFormat(e.target.value)}
+                        style={{ padding: "8px" }}
+                      >
+                        <option value="jpg">JPG</option>
+                        <option value="png">PNG</option>
+                        <option value="webp">WebP</option>
+                      </select>
                     </div>
 
                     <button
                       onClick={processImages}
                       disabled={processing}
                       style={{
-                        marginTop: "18px",
+                        marginTop: "14px",
                         padding: "12px 18px",
-                        borderRadius: "10px",
-                        border: "none",
-                        background: "#111",
-                        color: "#fff",
-                        cursor: processing ? "default" : "pointer",
-                        opacity: processing ? 0.6 : 1,
                       }}
                     >
                       {processing
                         ? "Обрабатываю..."
-                        : "Запустить обработку"}
+                        : "Изменить размер / формат"}
                     </button>
+
+                    <hr style={{ margin: "24px 0" }} />
+
+                    <h4>AI/API обработка</h4>
+
+                    <p>
+                      Удаление фона через Replicate. Пока тестируем только
+                      первое выбранное изображение.
+                    </p>
+
+                    <button
+                      onClick={removeBackground}
+                      disabled={bgProcessing}
+                      style={{
+                        padding: "12px 18px",
+                        background: "#111",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      {bgProcessing
+                        ? "Удаляю фон..."
+                        : "Удалить фон — тест 1 фото"}
+                    </button>
+
+                    {bgError && (
+                      <p style={{ marginTop: "14px" }}>{bgError}</p>
+                    )}
+
+                    {bgResult && (
+                      <div style={{ marginTop: "18px" }}>
+                        <p>
+                          <strong>Фон удалён:</strong>
+                        </p>
+
+                        <img
+                          src={bgResult}
+                          alt="Результат"
+                          style={{
+                            maxWidth: "340px",
+                            width: "100%",
+                            border: "1px solid #ddd",
+                          }}
+                        />
+
+                        <br />
+
+                        <a
+                          href={bgResult}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Открыть готовое изображение
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {processError && (
-                  <p style={{ marginTop: "16px" }}>{processError}</p>
-                )}
+                {processError && <p>{processError}</p>}
 
                 {processedFiles.length > 0 && (
                   <div style={{ marginTop: "24px" }}>
                     <h3>Готовые файлы</h3>
 
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      {processedFiles.map((file) => (
-                        <a
-                          key={file.url}
-                          href={file.url}
-                          download={file.name}
-                        >
+                    {processedFiles.map((file) => (
+                      <div key={file.url}>
+                        <a href={file.url} download={file.name}>
                           Скачать {file.name}
                         </a>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
