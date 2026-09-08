@@ -7,6 +7,8 @@ export default function Home() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [files, setFiles] = useState([]);
+  const [confirmed, setConfirmed] = useState(false);
 
   async function analyzeTask() {
     if (!task.trim()) {
@@ -17,6 +19,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResult("");
+    setConfirmed(false);
 
     try {
       const response = await fetch("/api/analyze", {
@@ -39,6 +42,11 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleFiles(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    setFiles(selectedFiles);
   }
 
   return (
@@ -150,6 +158,61 @@ export default function Home() {
 
               {result && result}
             </div>
+
+            {result && (
+              <div
+                style={{
+                  marginTop: "24px",
+                  padding: "18px",
+                  border: "1px solid #ddd",
+                  borderRadius: "12px",
+                }}
+              >
+                <h3 style={{ marginTop: 0 }}>Загрузить файлы</h3>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFiles}
+                />
+
+                {files.length > 0 && (
+                  <p style={{ marginTop: "12px" }}>
+                    Выбрано файлов: <strong>{files.length}</strong>
+                  </p>
+                )}
+
+                <button
+                  onClick={() => setConfirmed(true)}
+                  disabled={files.length === 0}
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px 18px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: files.length === 0 ? "#aaa" : "#111",
+                    color: "#fff",
+                    cursor: files.length === 0 ? "default" : "pointer",
+                  }}
+                >
+                  Подтвердить план
+                </button>
+
+                {confirmed && (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      padding: "14px",
+                      background: "#eef7ee",
+                      borderRadius: "10px",
+                    }}
+                  >
+                    План подтверждён. Следующий этап — запуск обработки.
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </div>
       </div>
