@@ -26,6 +26,10 @@ export default function Home() {
   const [editProcessing, setEditProcessing] = useState(false);
   const [editResult, setEditResult] = useState("");
   const [editError, setEditError] = useState("");
+  const [segmentPrompt, setSegmentPrompt] = useState("");
+  const [segmentProcessing, setSegmentProcessing] = useState(false);
+  const [segmentResults, setSegmentResults] = useState([]);
+  const [segmentError, setSegmentError] = useState("");
 
   async function analyzeTask() {
     if (!task.trim()) {
