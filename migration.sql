@@ -1,6 +1,6 @@
--- Migration to add role and free_attempts to profiles table in Supabase
+-- Migration to add role, credits, free_attempts, RLS policies, and role protection trigger to profiles table in Supabase
 
--- Add role column to profiles table if it doesn't exist
+-- 1. Add role column to profiles table if it doesn't exist
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -11,7 +11,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add credits column to profiles table if it doesn't exist
+-- 2. Add credits column to profiles table if it doesn't exist
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -22,7 +22,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add free_attempts column to profiles table if it doesn't exist
+-- 3. Add free_attempts column to profiles table if it doesn't exist
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -33,8 +33,24 @@ BEGIN
     END IF;
 END $$;
 
--- Database-level protection: Prevent regular users from updating their own role column
--- Role updates can only be performed by service_role (server-side admin key) or direct SQL Editor execution.
+-- 4. Enable Row Level Security (RLS) on profiles table
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Allow users to read their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+CREATE POLICY "Users can view own profile" ON profiles
+  FOR SELECT
+  USING (auth.uid() = id);
+
+-- Allow users to update their own profile (non-role fields)
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+-- 5. Database-level protection: Prevent regular users from updating their own role column.
+-- Role updates can only be performed by service_role (server-side API path) or direct SQL Editor execution.
 
 CREATE OR REPLACE FUNCTION protect_profile_role()
 RETURNS TRIGGER AS $$
@@ -54,5 +70,5 @@ BEFORE UPDATE ON profiles
 FOR EACH ROW
 EXECUTE FUNCTION protect_profile_role();
 
--- Example query to set a user as admin (replace with actual user ID):
+-- Example query to set a user as admin in Supabase SQL Editor (replace with actual user ID):
 -- UPDATE profiles SET role = 'admin' WHERE id = 'user-uuid-here';
