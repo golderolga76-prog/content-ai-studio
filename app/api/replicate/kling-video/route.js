@@ -1,4 +1,5 @@
 import Replicate from "replicate";
+import { verifyAndConsumeAccess } from "../../../lib/supabaseServer";
 
 export const maxDuration = 300;
 
@@ -11,6 +12,14 @@ function getOutputUrl(output) {
 
 export async function POST(request) {
   try {
+    const access = await verifyAndConsumeAccess(request, 1);
+    if (!access.allowed) {
+      return Response.json(
+        { error: access.error },
+        { status: access.status || 403 }
+      );
+    }
+
     if (!process.env.REPLICATE_API_TOKEN) {
       return Response.json({ error: "REPLICATE_API_TOKEN не настроен." }, { status: 500 });
     }

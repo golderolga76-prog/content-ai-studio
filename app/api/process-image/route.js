@@ -1,7 +1,16 @@
 import sharp from "sharp";
+import { verifyAndConsumeAccess } from "../../lib/supabaseServer";
 
 export async function POST(request) {
   try {
+    const access = await verifyAndConsumeAccess(request, 0);
+    if (!access.allowed) {
+      return Response.json(
+        { error: access.error },
+        { status: access.status || 403 }
+      );
+    }
+
     const formData = await request.formData();
 
     const file = formData.get("file");
