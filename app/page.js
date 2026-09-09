@@ -100,15 +100,19 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  const fetchingProfileRef = useRef(false);
+
   const reloadProfile = useCallback(async (currentUser) => {
     if (!currentUser) return;
+    if (fetchingProfileRef.current) return;
 
+    fetchingProfileRef.current = true;
     try {
       const { data: sessionData } = supabase
         ? await supabase.auth.getSession()
         : { data: { session: null } };
 
-      const token = sessionData?.session?.access_token || session?.access_token;
+      const token = sessionData?.session?.access_token;
 
       if (token) {
         const res = await fetch("/api/me", {
@@ -120,7 +124,6 @@ export default function Home() {
           setCredits(profileData.credits ?? 0);
           setUserRole(profileData.role || "user");
           setFreeAttempts(profileData.free_attempts ?? 1);
-          return;
         } else {
           const errData = await res.json().catch(() => ({}));
           console.error("Error response from /api/me:", errData);
@@ -128,22 +131,24 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Error fetching /api/me:", err);
+    } finally {
+      fetchingProfileRef.current = false;
     }
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
 
     async function loadUser() {
       const {
-        data: { session },
+        data: { session: initialSession },
       } = await supabase.auth.getSession();
 
-      setSession(session ?? null);
-      setUser(session?.user ?? null);
+      setSession(initialSession ?? null);
+      setUser(initialSession?.user ?? null);
 
-      if (session?.user) {
-        await reloadProfile(session.user);
+      if (initialSession?.user) {
+        await reloadProfile(initialSession.user);
       }
     }
 
@@ -160,7 +165,7 @@ export default function Home() {
     });
 
     return () => subscription.unsubscribe();
-  }, [reloadProfile]);
+  }, []);
 
   const getAuthHeaders = useCallback(async () => {
     if (!supabase) return {};
