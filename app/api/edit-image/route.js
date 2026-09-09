@@ -1,4 +1,5 @@
 import Replicate from "replicate";
+import { verifyAndConsumeAccess } from "../../lib/supabaseServer";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -6,6 +7,14 @@ const replicate = new Replicate({
 
 export async function POST(request) {
   try {
+    const access = await verifyAndConsumeAccess(request, 1);
+    if (!access.allowed) {
+      return Response.json(
+        { error: access.error },
+        { status: access.status || 403 }
+      );
+    }
+
     const formData = await request.formData();
 
     const file = formData.get("file");

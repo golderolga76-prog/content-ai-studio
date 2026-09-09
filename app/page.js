@@ -88,39 +88,63 @@ export default function Home() {
   const [executing, setExecuting] = useState(false);
   const [globalError, setGlobalError] = useState("");
   const [user, setUser] = useState(null);
-const [credits, setCredits] = useState(0);
+  const [session, setSession] = useState(null);
+  const [credits, setCredits] = useState(0);
+  const [userRole, setUserRole] = useState("user");
+  const [freeAttempts, setFreeAttempts] = useState(1);
 
-useEffect(() => {
-  if (!supabase) return;
+  const reloadProfile = useCallback(async (currentUser) => {
+    if (!supabase || !currentUser) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("credits, role, free_attempts")
+      .eq("id", currentUser.id)
+      .single();
 
-  async function loadUser() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    setUser(user ?? null);
-
-    if (user) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("credits")
-        .eq("id", user.id)
-        .single();
-
-      setCredits(data?.credits ?? 0);
+    if (data) {
+      setCredits(data.credits ?? 0);
+      setUserRole(data.role || "user");
+      setFreeAttempts(data.free_attempts ?? 1);
     }
-  }
+  }, []);
 
-  loadUser();
+  useEffect(() => {
+    if (!supabase) return;
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    setUser(session?.user ?? null);
-  });
+    async function loadUser() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  return () => subscription.unsubscribe();
-}, []);
+      setSession(session ?? null);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        await reloadProfile(session.user);
+      }
+    }
+
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession ?? null);
+      setUser(currentSession?.user ?? null);
+      if (currentSession?.user) {
+        reloadProfile(currentSession.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [reloadProfile]);
+
+  const getAuthHeaders = useCallback(async () => {
+    if (!supabase) return {};
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token || session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [session]);
 
   const fileInputRef = useRef(null);
 
@@ -144,9 +168,13 @@ useEffect(() => {
     resetExecution();
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
         body: JSON.stringify({ task }),
       });
 
@@ -205,6 +233,7 @@ useEffect(() => {
 
   async function runStep(step, inputFiles) {
     const p = step.params || {};
+    const authHeaders = await getAuthHeaders();
 
     if (step.handler === "sharp:resize") {
       const w = p.width || plan?.parameters?.width || 340;
@@ -222,6 +251,7 @@ useEffect(() => {
 
         const response = await fetch("/api/process-image", {
           method: "POST",
+          headers: { ...authHeaders },
           body: formData,
         });
 
@@ -245,6 +275,7 @@ useEffect(() => {
 
       const response = await fetch("/api/remove-background", {
         method: "POST",
+        headers: { ...authHeaders },
         body: formData,
       });
 
@@ -272,6 +303,7 @@ useEffect(() => {
 
       const response = await fetch("/api/segment-object", {
         method: "POST",
+        headers: { ...authHeaders },
         body: formData,
       });
 
@@ -295,6 +327,7 @@ useEffect(() => {
 
       const response = await fetch("/api/replicate/kling-video", {
         method: "POST",
+        headers: { ...authHeaders },
         body: formData,
       });
       const data = await response.json();
@@ -316,6 +349,7 @@ useEffect(() => {
 
   const response = await fetch("/api/edit-image", {
     method: "POST",
+    headers: { ...authHeaders },
     body: formData,
   });
 
@@ -366,6 +400,9 @@ useEffect(() => {
         const res = await runStep(step, currentFiles);
         setStepResult(step.id, res);
         updateStepState(step.id, "completed");
+        if (user) {
+          await reloadProfile(user);
+        }
 
         if (res.type === "video" && res.url) {
           currentFiles = currentFiles;
@@ -451,7 +488,37 @@ useEffect(() => {
           boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
         }}
       >
-        <h1 style={{ marginTop: 0 }}>Content AI Studio</h1>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+            marginBottom: "8px",
+          }}
+        >
+          <h1 style={{ margin: 0 }}>Content AI Studio</h1>
+          {user && (
+            <div
+              style={{
+                fontSize: "14px",
+                fontWeight: 600,
+                padding: "6px 14px",
+                borderRadius: "20px",
+                background: userRole === "admin" ? "#fef3c7" : "#f3f4f6",
+                color: userRole === "admin" ? "#b45309" : "#374151",
+                border: userRole === "admin" ? "1px solid #fcd34d" : "1px solid #e5e7eb",
+              }}
+            >
+              {userRole === "admin"
+                ? "Администратор — безлимитный доступ"
+                : freeAttempts > 0
+                ? `Бесплатная попытка: ${freeAttempts} | Кредиты: ${credits}`
+                : `Кредиты: ${credits}`}
+            </div>
+          )}
+        </div>
 
         <p style={{ color: "#555", marginBottom: "24px" }}>
           AI tools for social media, design and freelance work

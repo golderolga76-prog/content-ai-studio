@@ -748,8 +748,18 @@ const responseSchema = {
   additionalProperties: false,
 };
 
+import { verifyAndConsumeAccess } from "../../lib/supabaseServer";
+
 export async function POST(request) {
   try {
+    const access = await verifyAndConsumeAccess(request, 0);
+    if (!access.allowed) {
+      return Response.json(
+        { error: access.error },
+        { status: access.status || 403 }
+      );
+    }
+
     const { task } = await request.json();
 
     if (!task || !task.trim()) {
