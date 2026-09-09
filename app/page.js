@@ -121,25 +121,13 @@ export default function Home() {
           setUserRole(profileData.role || "user");
           setFreeAttempts(profileData.free_attempts ?? 1);
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          console.error("Error response from /api/me:", errData);
         }
       }
     } catch (err) {
       console.error("Error fetching /api/me:", err);
-    }
-
-    // Fallback if /api/me fails or token is unavailable
-    if (supabase) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("credits, role, free_attempts")
-        .eq("id", currentUser.id)
-        .single();
-
-      if (data) {
-        setCredits(data.credits ?? 0);
-        setUserRole(data.role || "user");
-        setFreeAttempts(data.free_attempts ?? 1);
-      }
     }
   }, [session]);
 

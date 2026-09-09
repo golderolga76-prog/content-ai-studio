@@ -2,16 +2,23 @@ import { createClient } from "@supabase/supabase-js";
 
 export function getSupabaseServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  const supabaseKey = serviceKey || anonKey;
 
   if (!supabaseUrl || !supabaseKey) {
     return null;
   }
 
-  return createClient(supabaseUrl, supabaseKey);
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
 export async function verifyAndConsumeAccess(request, cost = 1) {
@@ -27,7 +34,6 @@ export async function verifyAndConsumeAccess(request, cost = 1) {
   }
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    // If Supabase server exists, require authorization
     if (supabaseServer) {
       return {
         allowed: false,
@@ -50,6 +56,7 @@ export async function verifyAndConsumeAccess(request, cost = 1) {
   } = await supabaseServer.auth.getUser(token);
 
   if (authError || !user) {
+    console.error("verifyAndConsumeAccess authError:", authError);
     return {
       allowed: false,
       status: 401,
@@ -64,24 +71,18 @@ export async function verifyAndConsumeAccess(request, cost = 1) {
     .eq("id", user.id)
     .single();
 
-  if (profileError && profileError.code !== "PGRST116") {
-    console.error("Error fetching profile:", profileError);
+  if (profileError) {
+    console.error("verifyAndConsumeAccess profileError:", profileError);
   }
 
   const role = profile?.role || "user";
   const freeAttempts = profile?.free_attempts ?? 1;
   const credits = profile?.credits ?? 0;
 
-  // Requirement 3: For role = admin:
-  // - unlimited access to all tools
-  // - never deduct credits
-  // - do not block AI/API operations when balance is 0
-  // - do not consume the free attempt
   if (role === "admin") {
     return { allowed: true, isAdmin: true, user, profile };
   }
 
-  // For free/local operations (cost === 0): allow without deducting credits/attempts
   if (cost === 0) {
     return {
       allowed: true,
@@ -92,12 +93,7 @@ export async function verifyAndConsumeAccess(request, cost = 1) {
     };
   }
 
-  // Requirement 4: For normal users:
-  // - keep 1 free attempt
-  // - after the free attempt, require sufficient credits
-  // - block paid execution if credits are insufficient
   if (freeAttempts > 0) {
-    // Consume free attempt
     const newFreeAttempts = freeAttempts - 1;
     await supabaseServer
       .from("profiles")
@@ -115,7 +111,6 @@ export async function verifyAndConsumeAccess(request, cost = 1) {
   }
 
   if (credits >= cost) {
-    // Consume credits
     const newCredits = credits - cost;
     await supabaseServer
       .from("profiles")
