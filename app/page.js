@@ -88,7 +88,9 @@ export default function Home() {
   const [executing, setExecuting] = useState(false);
   const [globalError, setGlobalError] = useState("");
   const [user, setUser] = useState(null);
-const [credits, setCredits] = useState(0);
+  const [credits, setCredits] = useState(0);
+  const [activeTool, setActiveTool] = useState("Анализ ТЗ");
+  const [history, setHistory] = useState([]);
 
 useEffect(() => {
   if (!supabase) return;
@@ -157,6 +159,7 @@ useEffect(() => {
       }
 
       setResult(data.result);
+      setHistory((prev) => [{ title: task.slice(0, 52), tool: activeTool, status: "Готово", time: "Только что" }, ...prev].slice(0, 8));
 
       if (data.plan) {
         setPlan(data.plan);
@@ -432,480 +435,56 @@ useEffect(() => {
 
   const params = plan?.parameters;
 
+  const tools = [
+    { name: "Анализ ТЗ", icon: "✦", description: "Разбор задачи и план" },
+    { name: "Изображения", icon: "◈", description: "Обработка и улучшение" },
+    { name: "Карточки товара", icon: "▣", description: "Визуал для маркетплейса" },
+    { name: "Одностраничный сайт", icon: "▤", description: "Структура и контент" },
+    { name: "Визитки и флаеры", icon: "▧", description: "Печатные материалы" },
+    { name: "Видео", icon: "▷", description: "Движение из изображения" },
+  ];
+  const presets = {
+    "Изображения": ["Удалить фон товара", "Улучшить качество фото", "Подготовить 1:1 для соцсетей"],
+    "Карточки товара": ["Карточка для Wildberries", "Инфографика товара", "Главный слайд каталога"],
+    "Одностраничный сайт": ["Лендинг нового продукта", "Страница услуги", "Продающий экран"],
+    "Визитки и флаеры": ["Минималистичная визитка", "Флаер акции", "Постер мероприятия"],
+    "Видео": ["Плавное движение камеры", "Видео для Reels", "Анимировать товар"],
+  };
+  const currentPresets = presets[activeTool] || ["Разобрать ТЗ клиента", "Проверить реализуемость", "Составить план работ"];
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f7f7f8",
-        fontFamily: "Arial, sans-serif",
-        padding: "24px",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-          background: "#ffffff",
-          borderRadius: "18px",
-          padding: "24px",
-          boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h1 style={{ marginTop: 0 }}>Content AI Studio</h1>
+    <main className="studio-shell">
+      <aside className="studio-sidebar">
+        <div className="brand"><div className="brand-mark">C</div><div><strong>Content AI</strong><span>STUDIO</span></div></div>
+        <div className="workspace-label">РАБОЧАЯ ОБЛАСТЬ</div>
+        <nav className="tool-nav">
+          {tools.map((tool) => <button key={tool.name} className={`tool-link ${activeTool === tool.name ? "active" : ""}`} onClick={() => { setActiveTool(tool.name); setError(""); }}><span className="tool-icon">{tool.icon}</span><span><b>{tool.name}</b><small>{tool.description}</small></span>{activeTool === tool.name && <i>›</i>}</button>)}
+        </nav>
+        <div className="sidebar-bottom"><button className="secondary-link" onClick={() => setActiveTool("История")}><span>◷</span> История задач</button><button className="secondary-link"><span>?</span> Помощь и поддержка</button><div className="user-card"><div className="avatar">{user?.email?.[0]?.toUpperCase() || "G"}</div><div><b>{user?.email || "Гостевой режим"}</b><small>{user ? "Аккаунт подключён" : "Войдите для сохранения"}</small></div><span>•••</span></div></div>
+      </aside>
 
-        <p style={{ color: "#555", marginBottom: "24px" }}>
-          AI tools for social media, design and freelance work
-        </p>
+      <section className="studio-main">
+        <header className="topbar"><div><p className="eyebrow">CONTENT AI STUDIO / WORKSPACE</p><h1>{activeTool === "История" ? "История задач" : activeTool}</h1><p className="muted">Создавайте контент быстрее с помощью готовых AI-инструментов.</p></div><div className="top-actions"><div className="credit-pill"><span className="credit-dot"/><div><small>Баланс</small><b>{user ? `${credits} кредитов` : "1 бесплатная попытка"}</b></div></div><button className="icon-button" aria-label="Уведомления">◌</button><button className="mobile-menu" onClick={() => document.querySelector('.studio-sidebar')?.classList.toggle('open')}>☰</button></div></header>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "220px 1fr",
-            gap: "24px",
-          }}
-        >
-          <aside
-            style={{
-              borderRight: "1px solid #e5e5e5",
-              paddingRight: "18px",
-            }}
-          >
-            <h3>Инструменты</h3>
-            <div style={{ display: "grid", gap: "10px" }}>
-              <button>Анализ ТЗ</button>
-              <button>Изображения</button>
-              <button>Карточки товара</button>
-              <button>Одностраничный сайт</button>
-              <button>Визитки и флаеры</button>
-              <button>Видео</button>
+        {activeTool === "История" ? <div className="history-panel"><div className="section-heading"><div><h2>Последние задачи</h2><p>Здесь будут появляться ваши готовые результаты.</p></div><span className="badge neutral">{history.length} задач</span></div>{history.length ? history.map((item, i) => <div className="history-row" key={i}><div className="history-symbol">✦</div><div><b>{item.title}</b><small>{item.tool} · {item.time}</small></div><span className="badge success">{item.status}</span></div>) : <div className="empty-state"><div className="empty-icon">◷</div><h3>История пока пуста</h3><p>Запустите первый инструмент, и результат появится здесь.</p></div>}</div> : <div className="workspace-grid">
+          <div className="composer-column">
+            <div className="card prompt-card"><div className="card-title"><div><span className="step-number">01</span><div><h2>Опишите задачу</h2><p>Чем подробнее ТЗ, тем точнее результат</p></div></div><span className="badge neutral">AI-помощник</span></div>
+              <div className="prompt-wrap"><textarea value={task} onChange={(e) => setTask(e.target.value)} placeholder={activeTool === "Анализ ТЗ" ? "Вставьте ТЗ клиента или опишите задачу..." : `Опишите, что нужно сделать в разделе «${activeTool}»...`} /><span className="char-count">{task.length} / 2000</span></div>
+              <div className="quick-prompts"><span>Быстрые шаблоны:</span>{currentPresets.map((preset) => <button key={preset} onClick={() => setTask(preset)}>{preset}</button>)}</div>
+              <div className="upload-zone" onClick={() => fileInputRef.current?.click()}><div className="upload-icon">↑</div><div><b>Перетащите файлы сюда</b><p>или нажмите, чтобы выбрать · PNG, JPG, WEBP до 20 МБ</p></div><input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} hidden /></div>
+              {files.length > 0 && <div className="file-list">{files.map((file) => <span key={file.name}>◈ {file.name}</span>)}</div>}
+              <button className="primary-action" onClick={analyzeTask} disabled={loading}>{loading ? "Анализируем..." : `Запустить ${activeTool.toLowerCase()}  →`}</button>
+              {error && <div className="inline-error">{error}</div>}
             </div>
+            {result && <div className="card result-card"><div className="section-heading"><div><h2>Результат анализа</h2><p>Проверьте план перед запуском операций</p></div><span className="badge success">Готово</span></div><div className="result-copy">{result}</div></div>}
+          </div>
+          <aside className="details-column">
+            <div className="card tips-card"><div className="card-title"><div><span className="step-number violet">✦</span><div><h2>Популярные шаблоны</h2><p>Начните с готового сценария</p></div></div></div><div className="template-list">{currentPresets.map((preset, i) => <button key={preset} onClick={() => setTask(preset)}><span className="template-icon">{["◈", "▣", "✧"][i % 3]}</span><span><b>{preset}</b><small>{activeTool}</small></span><span>→</span></button>)}</div></div>
+            <div className="card balance-card"><div className="section-heading"><div><h2>Ваш баланс</h2><p>Используйте кредиты для AI-операций</p></div><span className="balance-number">{credits}</span></div><div className="balance-line"><span>Бесплатная попытка</span><span className="badge violet-badge">Доступна</span></div><button className="outline-action" onClick={() => alert("Пополнение баланса будет доступно после подключения тарифа.")}>Пополнить баланс</button></div>
+            {plan && <div className="card plan-mini"><div className="section-heading"><div><h2>План готов</h2><p>{plan.steps?.length || 0} этапов · стоимость до запуска</p></div><span className="badge warning">Проверка</span></div><div className="cost-preview"><span>AI/API операции</span><b>{plan.costSummary?.ai || "Уточняется"}</b></div><button className="outline-action" onClick={() => document.querySelector('.result-card')?.scrollIntoView({ behavior: 'smooth' })}>Посмотреть детали ↓</button></div>}
           </aside>
-
-          <section>
-            <h2>Рабочая область</h2>
-
-            <textarea
-              value={task}
-              onChange={(e) => setTask(e.target.value)}
-              placeholder="Вставьте ТЗ клиента или опишите задачу..."
-              style={{
-                width: "100%",
-                minHeight: "160px",
-                padding: "14px",
-                borderRadius: "10px",
-                border: "1px solid #ccc",
-                fontSize: "16px",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <button
-              onClick={analyzeTask}
-              disabled={loading}
-              style={{
-                marginTop: "16px",
-                padding: "12px 18px",
-                borderRadius: "10px",
-                border: "none",
-                background: "#111",
-                color: "#fff",
-              }}
-            >
-              {loading ? "Анализирую..." : "Анализировать"}
-            </button>
-
-            <div
-              style={{
-                marginTop: "24px",
-                padding: "18px",
-                background: "#f3f3f3",
-                borderRadius: "12px",
-                whiteSpace: "pre-wrap",
-                lineHeight: "1.5",
-              }}
-            >
-              {error && error}
-              {!error && !result && "Здесь будет результат анализа ТЗ."}
-              {result && result}
-            </div>
-
-            {plan && (
-              <div
-                style={{
-                  marginTop: "20px",
-                  border: "1px solid #e5e5e5",
-                  borderRadius: "12px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "14px 18px",
-                    background: "#fafafa",
-                    borderBottom: "1px solid #e5e5e5",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <strong>Структурированный план</strong>
-                  <span
-                    style={{
-                      padding: "3px 10px",
-                      borderRadius: "20px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#fff",
-                      background:
-                        plan.status === "executable"
-                          ? "#16a34a"
-                          : plan.status === "partial"
-                          ? "#d97706"
-                          : "#dc2626",
-                    }}
-                  >
-                    {STATUS_LABELS[plan.status] || plan.status}
-                  </span>
-                </div>
-
-                <div style={{ padding: "18px", display: "grid", gap: "16px" }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fill, minmax(220px, 1fr))",
-                      gap: "12px",
-                    }}
-                  >
-                    <PlanParam label="Тип задачи" value={plan.taskType} />
-                    <PlanParam label="Назначение" value={plan.purpose} />
-                    <PlanParam label="Стиль" value={formatValue(plan.style)} />
-                    <PlanParam
-                      label="Количество файлов"
-                      value={formatValue(params?.fileCount)}
-                    />
-                    <PlanParam
-                      label="Размер"
-                      value={
-                        params?.width && params?.height
-                          ? `${params.width} × ${params.height}`
-                          : params?.aspectRatio
-                          ? params.aspectRatio
-                          : "не указан"
-                      }
-                    />
-                    <PlanParam
-                      label="Формат"
-                      value={formatValue(params?.format)}
-                    />
-                    <PlanParam
-                      label="Фон"
-                      value={formatValue(params?.background)}
-                    />
-                    <PlanParam
-                      label="Цвет фона"
-                      value={formatValue(params?.backgroundColor)}
-                    />
-                    <PlanParam
-                      label="Платформа"
-                      value={formatValue(params?.platform)}
-                    />
-                    <PlanParam
-                      label="Тень"
-                      value={formatValue(params?.shadow)}
-                    />
-                    <PlanParam
-                      label="Освещение"
-                      value={formatValue(params?.lighting)}
-                    />
-                    <PlanParam
-                      label="Поворот"
-                      value={formatValue(params?.rotation)}
-                    />
-                    <PlanParam
-                      label="Масштаб"
-                      value={formatValue(params?.scale)}
-                    />
-                    <PlanParam
-                      label="Позиция"
-                      value={formatValue(params?.position)}
-                    />
-                  </div>
-
-                  {plan.steps && plan.steps.length > 0 && (
-                    <div>
-                      <h4
-                        style={{
-                          margin: "0 0 12px 0",
-                          fontSize: "15px",
-                        }}
-                      >
-                        Этапы выполнения
-                      </h4>
-
-                      <div style={{ display: "grid", gap: "10px" }}>
-                        {plan.steps.map((step, index) => (
-                          <StepCard
-                            key={step.id || index}
-                            step={step}
-                            index={index}
-                            execState={stepStates[step.id] || "waiting"}
-                            execResult={stepResults[step.id]}
-                            onConfirmPaid={() => confirmPaidStep(step.id)}
-                            executing={executing}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {plan.costSummary && (
-                    <div
-                      style={{
-                        padding: "14px",
-                        background: "#fafafa",
-                        borderRadius: "10px",
-                        border: "1px solid #e5e5e5",
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit, minmax(180px, 1fr))",
-                        gap: "12px",
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: "#999",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Локальные операции
-                        </div>
-                        <div style={{ fontWeight: 600 }}>
-                          {plan.costSummary.local}
-                        </div>
-                      </div>
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: "#999",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          AI/API операции
-                        </div>
-                        <div style={{ fontWeight: 600 }}>
-                          {plan.costSummary.ai}
-                        </div>
-                      </div>
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: "#999",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Итого
-                        </div>
-                        <div style={{ fontWeight: 600 }}>
-                          {plan.costSummary.total}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {plan.needsInput && plan.needsInput.length > 0 && (
-                    <div
-                      style={{
-                        padding: "14px",
-                        background: "#fef3c7",
-                        borderRadius: "10px",
-                        border: "1px solid #fcd34d",
-                      }}
-                    >
-                      <strong>Что нужно от пользователя:</strong>
-                      <ul
-                        style={{
-                          margin: "8px 0 0 0",
-                          paddingLeft: "20px",
-                        }}
-                      >
-                        {plan.needsInput.map((item, i) => (
-                          <li key={i} style={{ fontSize: "14px" }}>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {plan.manualReview && allConnectedCompleted && (
-                    <div
-                      style={{
-                        padding: "14px",
-                        background: "#fef3c7",
-                        borderRadius: "10px",
-                        border: "1px solid #fcd34d",
-                        fontSize: "14px",
-                      }}
-                    >
-                      <strong>
-                        Требуется ручная проверка результата перед выдачей
-                        клиенту.
-                      </strong>
-                    </div>
-                  )}
-
-                  {plan.nextStep && (
-                    <div
-                      style={{
-                        padding: "14px",
-                        background: "#f0f9ff",
-                        borderRadius: "10px",
-                        border: "1px solid #bae6fd",
-                        fontSize: "14px",
-                      }}
-                    >
-                      <strong>Следующий шаг: </strong>
-                      {plan.nextStep}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {result && (
-              <div
-                style={{
-                  marginTop: "24px",
-                  padding: "18px",
-                  border: "1px solid #ddd",
-                  borderRadius: "12px",
-                }}
-              >
-                <h3>Файлы</h3>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleFiles}
-                />
-
-                {files.length > 0 && (
-                  <p>
-                    Выбрано файлов: <strong>{files.length}</strong>
-                  </p>
-                )}
-
-                <button
-                  onClick={confirmPlan}
-                  disabled={!files.length || planConfirmed}
-                  style={{
-                    marginTop: "8px",
-                    padding: "12px 18px",
-                    borderRadius: "10px",
-                    border: "none",
-                    background:
-                      files.length && !planConfirmed ? "#dc2626" : "#aaa",
-                    color: "#fff",
-                  }}
-                >
-                  {planConfirmed ? "План подтверждён" : "Подтвердить план"}
-                </button>
-
-                {planConfirmed && plan && (
-                  <div
-                    style={{
-                      marginTop: "16px",
-                      padding: "16px",
-                      background: "#fff5f5",
-                      borderRadius: "10px",
-                      border: "1px solid #fecaca",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div>
-                        <strong>Запуск выполнения</strong>
-                        <p
-                          style={{
-                            margin: "4px 0 0 0",
-                            fontSize: "13px",
-                            color: "#666",
-                          }}
-                        >
-                          Бесплатные операции выполняются автоматически.
-                          Платные операции требуют подтверждения каждого этапа.
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={executePlan}
-                        disabled={executing}
-                        style={{
-                          padding: "12px 24px",
-                          borderRadius: "10px",
-                          border: "none",
-                          background: executing ? "#999" : "#dc2626",
-                          color: "#fff",
-                          fontSize: "15px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {executing
-                          ? "Выполняю..."
-                          : hasPendingPaid
-                          ? "Запустить доступные этапы"
-                          : "Запустить выполнение"}
-                      </button>
-                    </div>
-
-                    {globalError && (
-                      <p
-                        style={{
-                          marginTop: "12px",
-                          color: "#dc2626",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {globalError}
-                      </p>
-                    )}
-
-                    {allConnectedCompleted && !globalError && (
-                      <p
-                        style={{
-                          marginTop: "12px",
-                          color: "#16a34a",
-                          fontWeight: 500,
-                        }}
-                      >
-                        Все доступные этапы завершены. Проверьте результаты
-                        выше.
-                        {plan.manualReview &&
-                          " Требуется ручная проверка перед выдачей."}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
+        </div>}
+      </section>
     </main>
   );
 }
