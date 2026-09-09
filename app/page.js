@@ -90,6 +90,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [credits, setCredits] = useState(0);
   const [activeTool, setActiveTool] = useState("Анализ ТЗ");
+  const [selectedPreset, setSelectedPreset] = useState(null);
   const [history, setHistory] = useState([]);
 
 useEffect(() => {
@@ -204,6 +205,17 @@ useEffect(() => {
 
   function setStepResult(stepId, result) {
     setStepResults((prev) => ({ ...prev, [stepId]: result }));
+  }
+
+  function applyPreset(preset) {
+    setActiveTool(preset.tool);
+    setSelectedPreset(preset);
+    setTask(preset.prompt);
+    setError("");
+    setResult("");
+    setPlan(null);
+    setPlanConfirmed(false);
+    resetExecution();
   }
 
   async function runStep(step, inputFiles) {
@@ -443,14 +455,25 @@ useEffect(() => {
     { name: "Визитки и флаеры", icon: "▧", description: "Печатные материалы" },
     { name: "Видео", icon: "▷", description: "Движение из изображения" },
   ];
-  const presets = {
-    "Изображения": ["Удалить фон товара", "Улучшить качество фото", "Подготовить 1:1 для соцсетей"],
-    "Карточки товара": ["Карточка для Wildberries", "Инфографика товара", "Главный слайд каталога"],
-    "Одностраничный сайт": ["Лендинг нового продукта", "Страница услуги", "Продающий экран"],
-    "Визитки и флаеры": ["Минималистичная визитка", "Флаер акции", "Постер мероприятия"],
-    "Видео": ["Плавное движение камеры", "Видео для Reels", "Анимировать товар"],
-  };
-  const currentPresets = presets[activeTool] || ["Разобрать ТЗ клиента", "Проверить реализуемость", "Составить план работ"];
+  const presetCatalog = [
+    { label: "Удалить фон товара", tool: "Изображения", handler: "replicate:remove-background", prompt: "Удалить фон с загруженного изображения товара. Используй handler replicate:remove-background. Нужен один файл изображения." },
+    { label: "Улучшить качество фото", tool: "Изображения", handler: "replicate:flux-edit", prompt: "Улучшить качество и детализацию загруженного фото товара через handler replicate:flux-edit." },
+    { label: "Подготовить 1:1 для соцсетей", tool: "Изображения", handler: "sharp:resize", prompt: "Подготовить загруженное изображение в квадратном формате 1:1 через handler sharp:resize, размер 1080x1080, JPG." },
+    { label: "Карточка для Wildberries", tool: "Карточки товара", handler: "manual_review", prompt: "Подготовить структуру и текст карточки товара для Wildberries: заголовок, преимущества, характеристики и содержание слайдов." },
+    { label: "Инфографика товара", tool: "Карточки товара", handler: "manual_review", prompt: "Разработать структуру инфографики товара по загруженным материалам: тезисы, блоки, подписи и порядок слайдов." },
+    { label: "Главный слайд каталога", tool: "Карточки товара", handler: "manual_review", prompt: "Подготовить концепцию главного слайда каталога товара: композиция, оффер, заголовок и ключевые преимущества." },
+    { label: "Лендинг нового продукта", tool: "Одностраничный сайт", handler: "manual_review", prompt: "Составить структуру одностраничного сайта нового продукта: блоки, тексты, CTA и порядок секций." },
+    { label: "Страница услуги", tool: "Одностраничный сайт", handler: "manual_review", prompt: "Составить продающую страницу услуги: целевая аудитория, оффер, преимущества, доказательства и CTA." },
+    { label: "Продающий экран", tool: "Одностраничный сайт", handler: "manual_review", prompt: "Разработать первый продающий экран для продукта: заголовок, подзаголовок, выгода и призыв к действию." },
+    { label: "Минималистичная визитка", tool: "Визитки и флаеры", handler: "manual_review", prompt: "Подготовить ТЗ и текстовое наполнение минималистичной визитки: имя, должность, контакты и визуальная иерархия." },
+    { label: "Флаер акции", tool: "Визитки и флаеры", handler: "manual_review", prompt: "Подготовить концепцию флаера акции: оффер, сроки, условия, CTA и рекомендации по визуальной иерархии." },
+    { label: "Постер мероприятия", tool: "Визитки и флаеры", handler: "manual_review", prompt: "Подготовить ТЗ постера мероприятия: заголовок, дата, место, программа, контакты и иерархия информации." },
+    { label: "Плавное движение камеры", tool: "Видео", handler: "replicate:kling-video", prompt: "Создать короткое видео из загруженного изображения с плавным рекламным движением камеры через handler replicate:kling-video." },
+    { label: "Видео для Reels", tool: "Видео", handler: "replicate:kling-video", prompt: "Создать вертикальное видео для Reels из загруженного изображения через handler replicate:kling-video, динамика умеренная." },
+    { label: "Анимировать товар", tool: "Видео", handler: "replicate:kling-video", prompt: "Анимировать товар на загруженном изображении через handler replicate:kling-video, сохранив форму и детали продукта." },
+  ];
+  const presets = Object.fromEntries(tools.map((tool) => [tool.name, presetCatalog.filter((preset) => preset.tool === tool.name)]));
+  const currentPresets = presets[activeTool] || [];
 
   return (
     <main className="studio-shell">
@@ -470,8 +493,8 @@ useEffect(() => {
           <div className="composer-column">
             <div className="card prompt-card"><div className="card-title"><div><span className="step-number">01</span><div><h2>Опишите задачу</h2><p>Чем подробнее ТЗ, тем точнее результат</p></div></div><span className="badge neutral">AI-помощник</span></div>
               <div className="prompt-wrap"><textarea value={task} onChange={(e) => setTask(e.target.value)} placeholder={activeTool === "Анализ ТЗ" ? "Вставьте ТЗ клиента или опишите задачу..." : `Опишите, что нужно сделать в разделе «${activeTool}»...`} /><span className="char-count">{task.length} / 2000</span></div>
-              <div className="quick-prompts"><span>Быстрые шаблоны:</span>{currentPresets.map((preset) => <button key={preset} onClick={() => setTask(preset)}>{preset}</button>)}</div>
-              <div className="upload-zone" onClick={() => fileInputRef.current?.click()}><div className="upload-icon">↑</div><div><b>Перетащите файлы сюда</b><p>или нажмите, чтобы выбрать · PNG, JPG, WEBP до 20 МБ</p></div><input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} hidden /></div>
+              <div className="quick-prompts"><span>Быстрые шаблоны:</span>{currentPresets.map((preset) => <button key={preset.label} onClick={() => applyPreset(preset)}>{preset.label}</button>)}</div>
+              <div className={`upload-zone ${selectedPreset && selectedPreset.handler !== "manual_review" ? "upload-required" : ""}`} onClick={() => fileInputRef.current?.click()}><div className="upload-icon">↑</div><div><b>{selectedPreset?.handler !== "manual_review" ? "Загрузите изображение для этого шаблона" : "Перетащите файлы сюда"}</b><p>или нажмите, чтобы выбрать · PNG, JPG, WEBP до 20 МБ</p></div><input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} hidden /></div>
               {files.length > 0 && <div className="file-list">{files.map((file) => <span key={file.name}>◈ {file.name}</span>)}</div>}
               <button className="primary-action" onClick={analyzeTask} disabled={loading}>{loading ? "Анализируем..." : `Запустить ${activeTool.toLowerCase()}  →`}</button>
               {error && <div className="inline-error">{error}</div>}
@@ -479,7 +502,7 @@ useEffect(() => {
             {result && <div className="card result-card"><div className="section-heading"><div><h2>Результат анализа</h2><p>Проверьте план перед запуском операций</p></div><span className="badge success">Готово</span></div><div className="result-copy">{result}</div></div>}
           </div>
           <aside className="details-column">
-            <div className="card tips-card"><div className="card-title"><div><span className="step-number violet">✦</span><div><h2>Популярные шаблоны</h2><p>Начните с готового сценария</p></div></div></div><div className="template-list">{currentPresets.map((preset, i) => <button key={preset} onClick={() => setTask(preset)}><span className="template-icon">{["◈", "▣", "✧"][i % 3]}</span><span><b>{preset}</b><small>{activeTool}</small></span><span>→</span></button>)}</div></div>
+            <div className="card tips-card"><div className="card-title"><div><span className="step-number violet">✦</span><div><h2>Популярные шаблоны</h2><p>Начните с готового сценария</p></div></div></div><div className="template-list">{currentPresets.map((preset, i) => <button key={preset.label} onClick={() => applyPreset(preset)}><span className="template-icon">{["◈", "▣", "✧"][i % 3]}</span><span><b>{preset.label}</b><small>{preset.handler === "manual_review" ? "AI-план и ТЗ" : preset.handler}</small></span><span>→</span></button>)}</div></div>
             <div className="card balance-card"><div className="section-heading"><div><h2>Ваш баланс</h2><p>Используйте кредиты для AI-операций</p></div><span className="balance-number">{credits}</span></div><div className="balance-line"><span>Бесплатная попытка</span><span className="badge violet-badge">Доступна</span></div><button className="outline-action" onClick={() => alert("Пополнение баланса будет доступно после подключения тарифа.")}>Пополнить баланс</button></div>
             {plan && <div className="card plan-mini"><div className="section-heading"><div><h2>План готов</h2><p>{plan.steps?.length || 0} этапов · стоимость до запуска</p></div><span className="badge warning">Проверка</span></div><div className="cost-preview"><span>AI/API операции</span><b>{plan.costSummary?.ai || "Уточняется"}</b></div><button className="outline-action" onClick={() => document.querySelector('.result-card')?.scrollIntoView({ behavior: 'smooth' })}>Посмотреть детали ↓</button></div>}
           </aside>
