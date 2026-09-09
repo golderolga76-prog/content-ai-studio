@@ -5,6 +5,7 @@ export async function GET(request) {
     const supabaseServer = getSupabaseServerClient();
 
     if (!supabaseServer) {
+      console.error("[/api/me] Error: Supabase server client not configured.");
       return Response.json(
         { error: "Supabase server client not configured." },
         { status: 500 }
@@ -30,11 +31,15 @@ export async function GET(request) {
     } = await supabaseServer.auth.getUser(token);
 
     if (authError || !user) {
+      console.error("[/api/me] Supabase auth.getUser error:", authError);
       return Response.json(
         { error: "Недействительный токен авторизации." },
         { status: 401 }
       );
     }
+
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const keySource = serviceKey ? "service-role" : "anon-key";
 
     const { data: profile, error: profileError } = await supabaseServer
       .from("profiles")
@@ -42,8 +47,22 @@ export async function GET(request) {
       .eq("id", user.id)
       .single();
 
-    if (profileError && profileError.code !== "PGRST116") {
-      console.error("Error fetching profile in /api/me:", profileError);
+    if (profileError) {
+      console.error("[/api/me] Error querying profiles table:", {
+        userId: user.id,
+        email: user.email,
+        error: profileError,
+      });
+
+      return Response.json(
+        {
+          error: `Ошибка чтения профиля: ${profileError.message || profileError.code}`,
+          source: keySource,
+          profileFound: false,
+          dbError: profileError.message || String(profileError),
+        },
+        { status: 500 }
+      );
     }
 
     const role = profile?.role || "user";
@@ -58,9 +77,11 @@ export async function GET(request) {
       role,
       credits,
       free_attempts: freeAttempts,
+      source: keySource,
+      profileFound: true,
     });
   } catch (error) {
-    console.error("Error in GET /api/me:", error);
+    console.error("[/api/me] Unhandled exception:", error);
     return Response.json(
       { error: "Ошибка сервера при получении профиля." },
       { status: 500 }
