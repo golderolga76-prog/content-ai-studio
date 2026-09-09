@@ -93,6 +93,13 @@ export default function Home() {
   const [userRole, setUserRole] = useState("user");
   const [freeAttempts, setFreeAttempts] = useState(1);
 
+  // Auth UI state
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
   const reloadProfile = useCallback(async (currentUser) => {
     if (!supabase || !currentUser) return;
     const { data } = await supabase
@@ -499,26 +506,276 @@ export default function Home() {
           }}
         >
           <h1 style={{ margin: 0 }}>Content AI Studio</h1>
-          {user && (
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {user ? (
+              <>
+                <span style={{ fontSize: "14px", color: "#333", fontWeight: 500 }}>
+                  {user.email}
+                </span>
+
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    padding: "6px 14px",
+                    borderRadius: "20px",
+                    background: userRole === "admin" ? "#fef3c7" : "#f3f4f6",
+                    color: userRole === "admin" ? "#b45309" : "#374151",
+                    border: userRole === "admin" ? "1px solid #fcd34d" : "1px solid #e5e7eb",
+                  }}
+                >
+                  {userRole === "admin"
+                    ? "Администратор — безлимитный доступ"
+                    : freeAttempts > 0
+                    ? `Бесплатная попытка: ${freeAttempts} | Кредиты: ${credits}`
+                    : `Кредиты: ${credits}`}
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (supabase) {
+                      await supabase.auth.signOut();
+                      setUser(null);
+                      setSession(null);
+                      setUserRole("user");
+                      setCredits(0);
+                      setFreeAttempts(1);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    border: "1px solid #ccc",
+                    background: "#fff",
+                    color: "#333",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                  }}
+                >
+                  Выйти
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  setShowAuthModal(true);
+                  setAuthError("");
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#111",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                }}
+              >
+                Войти
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showAuthModal && !user && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+          >
             <div
               style={{
-                fontSize: "14px",
-                fontWeight: 600,
-                padding: "6px 14px",
-                borderRadius: "20px",
-                background: userRole === "admin" ? "#fef3c7" : "#f3f4f6",
-                color: userRole === "admin" ? "#b45309" : "#374151",
-                border: userRole === "admin" ? "1px solid #fcd34d" : "1px solid #e5e7eb",
+                background: "#fff",
+                borderRadius: "16px",
+                padding: "24px",
+                width: "100%",
+                maxWidth: "380px",
+                boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                position: "relative",
               }}
             >
-              {userRole === "admin"
-                ? "Администратор — безлимитный доступ"
-                : freeAttempts > 0
-                ? `Бесплатная попытка: ${freeAttempts} | Кредиты: ${credits}`
-                : `Кредиты: ${credits}`}
+              <button
+                onClick={() => setShowAuthModal(false)}
+                style={{
+                  position: "absolute",
+                  top: "16px",
+                  right: "16px",
+                  border: "none",
+                  background: "none",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  color: "#666",
+                }}
+              >
+                ✕
+              </button>
+
+              <h2 style={{ marginTop: 0, marginBottom: "16px" }}>Вход в систему</h2>
+
+              {authError && (
+                <div
+                  style={{
+                    marginBottom: "14px",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    color: "#dc2626",
+                    fontSize: "13px",
+                  }}
+                >
+                  {authError}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "13px",
+                      color: "#555",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #ccc",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "13px",
+                      color: "#555",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Пароль
+                  </label>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #ccc",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    marginTop: "8px",
+                  }}
+                >
+                  <button
+                    disabled={authLoading}
+                    onClick={async () => {
+                      if (!supabase) {
+                        setAuthError("Supabase не подключён.");
+                        return;
+                      }
+                      setAuthLoading(true);
+                      setAuthError("");
+                      const { error } = await supabase.auth.signInWithPassword({
+                        email: authEmail,
+                        password: authPassword,
+                      });
+                      setAuthLoading(false);
+                      if (error) {
+                        setAuthError(error.message);
+                      } else {
+                        setShowAuthModal(false);
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#111",
+                      color: "#fff",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {authLoading ? "Вход..." : "Войти"}
+                  </button>
+
+                  <button
+                    disabled={authLoading}
+                    onClick={async () => {
+                      if (!supabase) {
+                        setAuthError("Supabase не подключён.");
+                        return;
+                      }
+                      setAuthLoading(true);
+                      setAuthError("");
+                      const { error } = await supabase.auth.signUp({
+                        email: authEmail,
+                        password: authPassword,
+                      });
+                      setAuthLoading(false);
+                      if (error) {
+                        setAuthError(error.message);
+                      } else {
+                        setShowAuthModal(false);
+                        alert("Регистрация успешна! Если требуется подтверждение по e-mail, проверьте вашу почту.");
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #ccc",
+                      background: "#fff",
+                      color: "#333",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Регистрация
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <p style={{ color: "#555", marginBottom: "24px" }}>
           AI tools for social media, design and freelance work
