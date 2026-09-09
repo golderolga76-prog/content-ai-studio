@@ -28,9 +28,16 @@ const systemPrompt = `
 - выделение конкретного объекта по описанию.
 
 4. replicate:flux-edit — AI-редактирование через FLUX Kontext Pro (платно):
-- ВНИМАНИЕ: искажает текст и перерисовывает упаковку;
-- использовать ТОЛЬКО для creative-задач, где допустима генеративная перерисовка;
-- НЕ использовать для товарных фото с текстом, логотипами или этикетками.
+  - ВНИМАНИЕ: искажает текст и перерисовывает упаковку;
+  - использовать ТОЛЬКО для creative-задач, где допустима генеративная перерисовка;
+  - НЕ использовать для товарных фото с текстом, логотипами или этикетками.
+
+5. replicate:kling-video — image-to-video через Replicate kwaivgi/kling-v2.1 (платно):
+  - использовать для задач «AI-видео», «видео из фото» и «рекламное видео по изображению»;
+  - поддерживаемые параметры: 5 или 10 секунд, 720p или 1080p;
+  - если клиент просит 4K, предложить 1080p, но не блокировать генерацию;
+  - это доступный платный обработчик, который требует подтверждения перед запуском.
+
 
 ====================
 РАСПОЗНАВАЙ ТАКИЕ ТИПЫ ЗАДАЧ
@@ -397,6 +404,7 @@ AI/API операции:
 - "replicate:remove-background" — удаление фона (платно)
 - "replicate:segment" — выделение объектов через Grounded SAM (платно)
 - "replicate:flux-edit" — AI-редактирование через FLUX (платно, creative only)
+- "replicate:kling-video" — image-to-video через Kling v2.1 (платно)
 - "compose:scene" — композиция из сегментированных объектов (ещё не подключено)
 - "not_connected" — операция распознана, но обработчик не подключён
 - "manual_review" — требуется проверка человеком
@@ -620,6 +628,7 @@ const responseSchema = {
                   "replicate:remove-background",
                   "replicate:segment",
                   "replicate:flux-edit",
+                  "replicate:kling-video",
                   "compose:scene",
                   "not_connected",
                   "manual_review",
@@ -653,6 +662,9 @@ const responseSchema = {
                   position: nullableString(),
                   shadow: nullableString(),
                   quality: nullableString(),
+                  duration: nullableNumber(),
+                  resolution: nullableString(),
+                  imageUrl: nullableString(),
                 },
                 required: [
                   "width",
@@ -669,6 +681,9 @@ const responseSchema = {
                   "position",
                   "shadow",
                   "quality",
+                  "duration",
+                  "resolution",
+                  "imageUrl",
                 ],
                 additionalProperties: false,
               },

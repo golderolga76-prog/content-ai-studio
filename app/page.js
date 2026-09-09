@@ -28,6 +28,7 @@ const HANDLER_LABELS = {
   "replicate:remove-background": "Replicate — удаление фона, платно",
   "replicate:segment": "Replicate — Grounded SAM, платно",
   "replicate:flux-edit": "Replicate — FLUX Kontext, платно (creative)",
+  "replicate:kling-video": "Replicate — Kling v2.1 image-to-video, платно",
   "compose:scene": "Композиция (не подключено)",
   not_connected: "Не подключено",
   manual_review: "Ручная проверка",
@@ -62,6 +63,7 @@ const CONNECTED_HANDLERS = new Set([
   "replicate:remove-background",
   "replicate:segment",
   "replicate:flux-edit",
+  "replicate:kling-video",
 ]);
 
 function formatValue(value) {
@@ -89,6 +91,8 @@ export default function Home() {
 const [credits, setCredits] = useState(0);
 
 useEffect(() => {
+  if (!supabase) return;
+
   async function loadUser() {
     const {
       data: { user },
@@ -282,6 +286,23 @@ useEffect(() => {
 
       return { type: "urls", urls: data.urls };
     }
+    if (step.handler === "replicate:kling-video") {
+      const formData = new FormData();
+      formData.append("file", inputFiles[0]);
+      formData.append("prompt", p.prompt || step.description || "Плавное рекламное движение камеры");
+      formData.append("duration", String([5, 10].includes(Number(p.duration)) ? p.duration : 5));
+      formData.append("resolution", p.resolution === "1080p" ? "1080p" : "720p");
+
+      const response = await fetch("/api/replicate/kling-video", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Ошибка генерации видео.");
+      if (!data.videoUrl) throw new Error("Kling не вернул готовое видео.");
+      return { type: "video", url: data.videoUrl };
+    }
+
     if (step.handler === "replicate:flux-edit") {
   const prompt = p.prompt || step.description || step.operation || "";
 
@@ -346,7 +367,9 @@ useEffect(() => {
         setStepResult(step.id, res);
         updateStepState(step.id, "completed");
 
-        if (res.type === "files" && res.items?.length) {
+        if (res.type === "video" && res.url) {
+          currentFiles = currentFiles;
+        } else if (res.type === "files" && res.items?.length) {
           const blobs = res.items.map((item) => item.blob);
           currentFiles = blobs.length ? blobs : currentFiles;
         } else if (res.type === "url" && res.url) {
@@ -1136,6 +1159,21 @@ function StepCard({ step, index, execState, execResult, onConfirmPaid, executing
 }
 
 function StepResult({ result }) {
+  if (result.type === "video" && result.url) {
+    return (
+      <div style={{ marginTop: "10px" }}>
+        <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>
+          Готовое видео:
+        </p>
+        <video controls src={result.url} style={{ width: "100%", maxWidth: "520px", borderRadius: "8px" }} />
+        <br />
+        <a href={result.url} download="kling-video.mp4" target="_blank" rel="noreferrer" style={{ fontSize: "13px" }}>
+          Скачать готовое видео
+        </a>
+      </div>
+    );
+  }
+
   if (result.type === "files" && result.items?.length) {
     return (
       <div style={{ marginTop: "10px" }}>
