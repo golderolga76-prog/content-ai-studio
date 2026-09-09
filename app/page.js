@@ -101,19 +101,47 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
 
   const reloadProfile = useCallback(async (currentUser) => {
-    if (!supabase || !currentUser) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("credits, role, free_attempts")
-      .eq("id", currentUser.id)
-      .single();
+    if (!currentUser) return;
 
-    if (data) {
-      setCredits(data.credits ?? 0);
-      setUserRole(data.role || "user");
-      setFreeAttempts(data.free_attempts ?? 1);
+    try {
+      const { data: sessionData } = supabase
+        ? await supabase.auth.getSession()
+        : { data: { session: null } };
+
+      const token = sessionData?.session?.access_token || session?.access_token;
+
+      if (token) {
+        const res = await fetch("/api/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const profileData = await res.json();
+          setCredits(profileData.credits ?? 0);
+          setUserRole(profileData.role || "user");
+          setFreeAttempts(profileData.free_attempts ?? 1);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching /api/me:", err);
     }
-  }, []);
+
+    // Fallback if /api/me fails or token is unavailable
+    if (supabase) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("credits, role, free_attempts")
+        .eq("id", currentUser.id)
+        .single();
+
+      if (data) {
+        setCredits(data.credits ?? 0);
+        setUserRole(data.role || "user");
+        setFreeAttempts(data.free_attempts ?? 1);
+      }
+    }
+  }, [session]);
 
   useEffect(() => {
     if (!supabase) return;
