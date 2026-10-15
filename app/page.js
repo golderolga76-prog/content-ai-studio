@@ -819,6 +819,7 @@ export default function Home() {
             <div style={{ display: "grid", gap: "10px" }}>
               <button>Анализ ТЗ</button>
               <button>Изображения</button>
+              <a href="/free-background" style={{ display: "block", padding: "10px", borderRadius: "8px", background: "#ecfdf5", color: "#166534", fontWeight: 600, textDecoration: "none" }}>Удалить фон бесплатно</a>
               <button>Карточки товара</button>
               <button>Одностраничный сайт</button>
               <button>Визитки и флаеры</button>
